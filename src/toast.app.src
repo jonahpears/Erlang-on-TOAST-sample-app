@@ -1,0 +1,22 @@
+{application, toast,
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {toast_app, [
+      % {role, #{module=>server_side,name=>server_side}},
+      % {role, #{module=>client_side,name=>client_side}} 
+      % {role, #{module=>server_side_ext,name=>server_side}},
+      % {role, #{module=>client_side_ext,name=>client_side}} 
+      {role, #{module=>server_side_ext_mon,name=>server_side}},
+      {role, #{module=>client_side_ext_mon,name=>client_side}} 
+    ]}},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {licenses, ["Apache-2.0"]},
+  {links, []}
+ ]}.
