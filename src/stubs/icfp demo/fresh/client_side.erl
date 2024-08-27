@@ -139,7 +139,7 @@ stopping(Reason, CoParty,
 %%% @param Reason is either atom like 'normal' or tuple like {error, more_details_or_data}.
 stopping(normal = Reason, _CoParty, #{role := #{name := Name, module := Module}, session_id := SessionID} = Data) ->
     ?SHOW("stopping normally.", [], Data),
-    SessionID ! {{Name, Module, self()}, stopping, Info, Data},
+    SessionID ! {{Name, Module, self()}, stopping, Reason, Data},
     exit(normal);
 %%% @doc stopping with error.
 %%% @param Reason is either atom like 'normal' or tuple like {error, Reason, Details}.
@@ -147,8 +147,8 @@ stopping(normal = Reason, _CoParty, #{role := #{name := Name, module := Module},
 %%% @param Data is a list to store data inside to be used throughout the program.
 stopping({error, Reason, Details} = Info, _CoParty, #{role := #{name := Name, module := Module}, session_id := SessionID} = Data) when is_atom(Reason) ->
     ?SHOW("error, stopping...\n\t\tReason:\t~p,\n\t\tDetails:\t~p,\n\t\tCoParty:\t~p,\n\t\tData:\t~p.\n",
-                              [Reason, Details, _CoParty, _Data],
-                              _Data),
+                              [Reason, Details, _CoParty, Data],
+                              Data),
     SessionID ! {{Name, Module, self()}, stopping, Info, Data},
     erlang:error(Reason, Details);
 %%% @doc Adds default Details to error.
@@ -157,8 +157,8 @@ stopping({error, Reason}, CoParty, Data) when is_atom(Reason) ->
     stopping({error, Reason, []}, CoParty, Data);
 %%% @doc stopping with Unexpected Reason.
 stopping(Reason, _CoParty, #{role := #{name := Name, module := Module}, session_id := SessionID} = Data) when is_atom(Reason) ->
-    ?SHOW("unexpected stop...\n\t\tReason:\t~p,\n\t\tCoParty:\t~p,\n\t\tData:\t~p.\n", [Reason, _CoParty, _Data], _Data),
-    SessionID ! {{Name, Module, self()}, stopping, Info, Data},
+    ?SHOW("unexpected stop...\n\t\tReason:\t~p,\n\t\tCoParty:\t~p,\n\t\tData:\t~p.\n", [Reason, _CoParty, Data], Data),
+    SessionID ! {{Name, Module, self()}, stopping, Reason, Data},
     exit(Reason).
 
 get_payload7({_Args, _Data}) -> extend_with_functionality_for_obtaining_payload.

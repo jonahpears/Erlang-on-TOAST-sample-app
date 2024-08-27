@@ -23,8 +23,10 @@
 -define(MONITOR_SPEC,
         #{init => state1_std,
           map =>
-              #{state1_std => #{send => #{data => state2_recv_after}}, state2_recv_after => #{recv => #{error => stop_state}},
-                state5_send_after => #{send => #{data => state2_recv_after}}, state7_std => #{send => #{stop => stop_state}}},
+              #{state1_std => #{send => #{data => state2_recv_after}}, 
+                state2_recv_after => #{recv => #{error => stop_state}},
+                state5_send_after => #{send => #{data => state2_recv_after}}, 
+                state7_std => #{send => #{stop => stop_state}}},
           timeouts => #{state2_recv_after => {1000, state5_send_after}, state5_send_after => {0, state7_std}}, errors => #{}, resets => #{}}).
 
 -define(PROTOCOL_SPEC, {act, s_data, {rec, "c1", {act, r_error, endP, aft, 1000, {act, s_data, {rvar, "c1"}, aft, 0, {act, s_stop, endP}}}}}).

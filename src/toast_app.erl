@@ -78,6 +78,8 @@ start(Type, Args) when is_list(Args) ->
   % ets_setup([], WorkerNum, RolePresets),
   % printout("~p, finished ets setup.\n", [?FUNCTION_NAME]),
 
+  % printout("~p, ets:all() = ~p.\n",[?FUNCTION_NAME,ets:all()]),
+  % timer:sleep(1000),
 
   printout("~p, ets:\n\t~p.\n", [?FUNCTION_NAME, ets_string(toast)]),
 
@@ -134,11 +136,15 @@ run() ->
   end,
 
   printout("~p, stopping.\n",[?FUNCTION_NAME]),
+  % printout("~p, ets: ~p.\n",[?FUNCTION_NAME,ets:all()]),
 
-  SupID = ets_get(toast, sup_id),
-  printout("~p, stopping sup (~p).\n",[?FUNCTION_NAME,SupID]),
 
-  exit(SupID,normal),
+  % SupID = ets_get(toast, sup_id),
+  % printout("~p, stopping sup (~p).\n",[?FUNCTION_NAME,SupID]),
+  % timer:sleep(500),
+
+  % exit(SupID,normal),
+  % timer:sleep(100),
 
   stop(?MODULE).
 %%

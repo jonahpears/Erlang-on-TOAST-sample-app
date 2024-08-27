@@ -54,12 +54,23 @@ default_data() ->
 
 
 default_options() -> 
-  #{ printout => default_options(printout)
+  #{ printout => default_options(printout),
+     presets => [ validation, enforcement ],
+     selected_preset => validation,
+     enforcement_configuration => default_options(enforcement_configuration),
+     grace_period => #{ enabled => true, duration => 1, count => 0 }
     %  delayable_sends => default_options(delayable_sends),
     %  queue => default_options(queue),
     %  forward_receptions => default_options(forward_receptions),
     %  support_auto_label => default_options(support_auto_label) %% only relevant to sending actions
     }.
+
+default_options(enforcement_configuration) -> 
+  #{ enable_postpone_send => true, 
+     enable_postpone_recv => true,
+     max_postpone_send => 1,
+     max_postpone_recv => 1,
+     flush_send_on_recv => true };
 
 default_options(printout) -> #{ enabled => true, verbose => true, termination => true };
 

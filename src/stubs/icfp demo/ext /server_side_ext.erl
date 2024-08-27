@@ -21,7 +21,8 @@
 -define(MONITOR_SPEC,
         #{init => state1_std,
           map =>
-              #{state1_std => #{recv => #{data => state2_send_after}}, state2_send_after => #{send => #{error => error_state}},
+              #{state1_std => #{recv => #{data => state2_send_after}}, 
+                state2_send_after => #{send => #{error => error_state}},
                 state6_branch => #{recv => #{data => state2_send_after, stop => stop_state}}},
           timeouts => #{state2_send_after => {1000, state6_branch}}, errors => #{state2_send_after => error_in_processing}, resets => #{}}).
 
@@ -128,7 +129,6 @@ loop_state2(CoParty, Data) ->
 %%% @see stopping/3.
 stopping(CoParty, Data) ->
     ?VSHOW("\n\t\tData:\t~p.", [Data], Data),
-    kill_timers(Data),
     stopping(normal, CoParty, Data).
 
 %%% @doc Adds default reason 'normal' for stopping.

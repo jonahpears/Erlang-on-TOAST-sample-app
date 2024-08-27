@@ -190,11 +190,11 @@ when not is_map_key(_Name, _Timers) ->
 %%
 
 %% @doc kills all active timers
-kill_timers(#{timers:=Timers}=_Data) ->
-  maps:fold(fun(_K,TimerID,_) ->
-    exit(TimerID,normal)
-  end, [], Timers).
-%%
+% kill_timers(#{timers:=Timers}=_Data) ->
+%   maps:fold(fun(_K,TimerID,_) ->
+%     exit(TimerID,normal)
+%   end, [], Timers).
+% %%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% message management (received)

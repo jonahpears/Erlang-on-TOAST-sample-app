@@ -233,43 +233,6 @@ handle_event(state_timeout, wait_to_finish, setup_state=_State, #{coparty_id:=un
     end
   end;
 %%
-    
-
-
-
-
-    % %% wait to receive coparty id from session
-    % receive {SessionID, coparty_id, CoPartyID} ->
-    %   Data1 = maps:put(coparty_id,CoPartyID,Data),
-    %   ?VSHOW("received coparty_id from session: ~p.",[CoPartyID],Data1),
-    %   %% exchange init message
-    %   CoPartyID ! {self(), init},
-    %   receive {CoPartyID, init} -> 
-    %     %% contact with coparty_id
-    %     ?VSHOW("successfully exchanged 'init' messages with coparty.",[],Data1),
-    %     %% send ready once finished setup with sus
-    %     SessionID ! {self(), ready},
-    %     ?VSHOW("signalled to session readiness -- now entering setup param phase.",[],Data1),
-    %     %% begin processing sus_requests
-    %     Processed = process_setup_params(Data1),
-    %     % ?VSHOW("processed return:\n~p.",[Processed],Data1),
-    %     {ok, Data2} = Processed,
-    %     ?VSHOW("finished setup param phase,\nData:\t~p.",[Data2],Data2),
-    %     %% wait for signal from session
-    %     ?VSHOW("waiting for session start signal.",[],Data2),
-    %     receive {SessionID, start} -> 
-    %       %% pass onto sus (from session)
-    %       SusID ! {SessionID, start},
-    %       ?VSHOW("received start signal and forwarded to sus.",[],Data2),
-    %       {next_state,Init,Data2} 
-    %     end 
-    %   end
-    % end,
-  % end;
-%%
-
-
-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -280,8 +243,7 @@ handle_event(state_timeout, wait_to_finish, setup_state=_State, #{coparty_id:=un
 %% notice StopData is used rather than Data. this contains the reason for termination.
 %% @see state_timeout case below.
 handle_event(enter, _OldState, stop_state=_State, #{reason:=_Reason,data:=_Data}=StopData) -> 
-  ?VSHOW("\n\t\t\tStopData:\t~p.\n",[StopData],_Data),
-  timer:sleep(1000),
+  ?VSHOW("stop_state,\n\n\tStopData:\t~p.\n",[StopData],_Data),
   {keep_state, StopData, [{state_timeout, 0, exit_deferral}]};
 %%
 
@@ -291,7 +253,7 @@ handle_event(enter, _OldState, stop_state=_State, Data)
 when is_map(Data) -> 
   ?VSHOW("caught stop_state with no StopData,\n\t\t\tData:\t~p.\n",[Data],Data),
   StopData = stop_data([{reason, normal}, {data, Data}]), 
-  ?VSHOW("\n\t\t\tStopData:\t~p.\n",[StopData],Data),
+  ?VSHOW("\n\n\tStopData:\t~p.\n",[StopData],Data),
   {repeat_state, StopData};
 %%
 
@@ -317,7 +279,7 @@ when is_map(Data) ->
   %% get error reason from old state
   ErrorReason = maps:get(OldState,Errors,error_not_specified),
   StopData = stop_data([{reason, ErrorReason}, {data, Data}]),
-  ?VSHOW("\n\t\t\tStopData:\t~p.\n",[StopData],Data),
+  ?VSHOW("\n\n\tStopData:\t~p.\n",[StopData],Data),
   {keep_state, StopData, [{state_timeout, 0, goto_stop}]};
 %%
 
@@ -459,6 +421,9 @@ when is_map_key(Timer,Timers) and is_reference(TimerRef) and is_atom(Timer) ->
   end;
 %%
 
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% monitor enter state & set integer timeouts
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -499,11 +464,16 @@ and (not is_map_key(timeouts,Flags))) ->
 %%
 
 
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% monitor process queued sending actions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% TODO update the old ones for here
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% monitor process postponed receptions
@@ -512,20 +482,24 @@ and (not is_map_key(timeouts,Flags))) ->
 %% TODO update the old ones for here
 
 
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% monitor ground-enter state
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% @doc here the monitor will re-enter for the final time, having finished all other applicable state_enter functions
 handle_event(enter, _OldState, _State, Data) -> 
-  ?VSHOW("grounded enter-state reached.\n\t\t\t(no other state-enter applications)\n\t\t\tdata:\t~p.\n",[Data],Data),
+  ?VSHOW("grounded enter-state reached.\n\t\t\t(no other state-enter applications)\n\t\t\ttrace:\t~p.\n",[maps:get(trace,Data,trace_not_found)],Data),
   keep_state_and_data;
 %%
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% transparent monitoring 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 
 %% @doc forward/send messages from monitored process to co-party.
 %% this even handles sending messages prescribed to currently occur.
@@ -551,9 +525,16 @@ handle_event(info, {SusID, Label, _Payload}, _State, #{coparty_id:=_CoPartyID,su
   {keep_state, Data, [postpone]};
 %%
 
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% fsm protocol monitoring
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% fsm protocol monitoring
@@ -844,58 +825,67 @@ handle_event(info, {SusID, Label, _Payload}, _State, #{coparty_id:=_CoPartyID,su
 %% receiving actions, 
 %% % % % % % %
 
-%% from correct states
-% handle_event(info, {CoPartyID, Label, Payload}, State, #{coparty_id:=CoPartyID,sus_id:=SusID,fsm:=#{map:=Map},msgs:=Msgs,trace:=Trace,queue:=Queue,options:=#{forward_receptions:=#{enabled:=true,any:=ForwardAny,labels:=ForwardLabels},queue:=#{flush_after_recv:=#{enabled:=FlushingEnabled,after_any:=FlushAfterAny,after_labels:=FlushAfterLabels}}}}=Data) 
-handle_event(info, {CoPartyID, Label, Payload}, State, #{coparty_id:=CoPartyID,sus_id:=SusID,fsm:=#{map:=Map},trace:=Trace}=Data) 
+%% @doc receive from correct states
+handle_event(info, {CoPartyID, Label, Payload}, State, #{coparty_id:=CoPartyID,sus_id:=SusID,fsm:=#{map:=Map},trace:=Trace,options:=Options}=Data) 
 when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(State, Map)))) ->  
-  %% forward if necessary
-  % case ForwardingEnabled of
-  %   true ->
-  %     case ForwardAny or lists:member(Label, ForwardLabels) of
-  %       true ->
   ?VSHOW("received (~p), forwarding to: ~p.",[Label,SusID],Data),
-          % show({Name, "~p, forwarding msg to ~p.", [State, SusID], Data}),
   SusID ! {self(), Label, Payload},
-  %       _ -> ok
-  %     end;
-  %   _ -> ok
-  % end,
-  % %% flush queue if necessasry
-  % case FlushingEnabled of
-  %   true -> %% check when to flush
-  %     case FlushAfterAny or lists:member(Label, FlushAfterLabels) of
-  %       true -> 
-  %         show(verbose, {Name, "~p,\n\t\t\t\tflushing queue after receiving.", [State], Data}),
-  %         Queue1 = Queue#{on=>[],off=>[]};
-  %       _ -> Queue1 = Queue
-  %     end; 
-  %   _ -> 
-  % Queue1 = Queue,
-  % end,
-  %% add to list of receives to check next time we enter state
-  % #{check_recvs:=CheckRecvs} = Queue1,
-  % Queue2 = Queue#{check_recvs=>CheckRecvs ++ [Label]},
-  % %% add to front of list of messages received under this label
-  % Payloads = maps:get(Label, Msgs, []),
-  % Payloads1 = [Payload] ++ Payloads,
-  % Msgs1 = Msgs#{Label => Payloads1},
   %% get next state
   #{State:=#{recv:=#{Label:=NextState}}} = Map,
   %% update trace
   Trace1 = [{NextState,{recv,Label,Payload}}] ++ Trace,
+  %% update options
+  Options1 = maps:put(grace_period,maps:put(count,0,maps:get(grace_period,Options,#{})),Options),
   %% update data
-  % Data1 = Data#{msgs=>Msgs1,queue=>Queue2,trace=>Trace1},
-  Data1 = Data#{trace=>Trace1},
+  Data1 = Data#{trace=>Trace1,options=>Options1},
   ?SHOW("recv (~p) -> ~p.",[Label,NextState],Data1),
   {next_state, NextState, Data1};
-
-%% from wrong states 
-handle_event(info, {_CoPartyID, _Label, _Payload}, _State, #{coparty_id:=CoPartyID}=_Data)
-when _CoPartyID=:=CoPartyID ->
-  % show(verbose, {"~p, wrong state to recv (~p: ~p), postponing,\n\t\t\t\tdata: ~p.", [State, Label, Payload, Data]}, else, {"~p, wrong state to recv (~p: ~p), postponing.", [State, Label, Payload]}, {Name, Data}),
-  {keep_state_and_data, [postpone]};
 %%
 
+%% @doc received message at wrong state AND configured as enforcement monitor
+handle_event(info, {_CoPartyID, _Label, _Payload}=Msg, State, #{coparty_id:=CoPartyID,options:=#{selected_preset:=SelectedPreset,grace_period:=#{enabled:=GracePeriodEnabled,duration:=GraceDuration,count:=GraceCount}=GracePeriod}=Options}=Data)
+when _CoPartyID=:=CoPartyID ->
+  case SelectedPreset of 
+
+    %% if preset is enforcement, then allowed to postpone 
+    enforcement -> 
+      ?VSHOW("received (~p) early, postponed.",[Msg],Data),
+      {keep_state_and_data, [postpone]};
+
+    %% otherwise, this is not allowed. 
+    _ ->
+
+      case GracePeriodEnabled of 
+
+        %% but, if grace period enabled, then check if still able to postpone
+        %% (grace period stops race conditions)
+        true -> 
+          case (GraceDuration-GraceCount)>0 of
+
+            %% grace period still active, postpone
+            true ->
+              ?VSHOW("received (~p) early, postponed.",[Msg],Data),
+              Data1 = maps:put(options,maps:put(grace_period,maps:put(count,GraceCount+1,GracePeriod),Options),Data),
+              {keep_state, Data1, [postpone]};
+
+            %% grace period has been expended
+            _ ->
+              ?VSHOW("protocol violation:\n\t\t\treceived (~p) too early,\n\t\t\t(not configured to enforce protocol,\n\t\t\t and grace period (~p) expended).\n",[Msg,GraceDuration],Data),
+              StopData = stop_data([{reason, protocol_violation_reception_expended_grace_period}, {data, Data}]),
+              ?VSHOW("after violation, stopping,\n\n\tStopData:\t~p.\n",[StopData],Data),
+              {next_state, stop_state, StopData}
+          end;
+
+        %% exit abnormally
+        _ ->
+          ?VSHOW("protocol violation:\n\t\t\treceived (~p) too early,\n\t\t\t(not configured to enforce protocol).\n",[Msg],Data),
+          StopData = stop_data([{reason, protocol_violation_too_early_reception}, {data, Data}]),
+          ?VSHOW("after violation, stopping,\n\n\tStopData:\t~p.\n",[StopData],Data),
+          {next_state, stop_state, StopData}
+      end
+
+  end;
+%%
 
 
 
@@ -907,14 +897,16 @@ when _CoPartyID=:=CoPartyID ->
 %% during processing
 handle_event(state_timeout, NextState, State, Data) 
 when is_map(Data) and NextState=:=State ->
-  % show(verbose, {Name, "~p,\n\t\t\t\tinternal timeout (~p),\n\t\t\t\tdata: ~p.", [State, NextState, Data], Data}),
+  % ?VSHOW("state_timeout (during processing), (~p) -> (~p),\n\t\t\tData:\t~p.\n",[State,NextState,Data],Data),
+  ?VSHOW("state_timeout (during processing),\n\t\t\t(~p) -> (~p),\n\t\t\ttrace:\t~p.\n",[State,NextState,maps:get(trace,Data,trace_not_found)],Data),
   {next_state, NextState, Data};
 %%
 
 %% mixed-choice
-handle_event(state_timeout, NextState, _State, Data) 
+handle_event(state_timeout, NextState, State, Data) 
 when is_map(Data) ->
-  % show({Name, "~p,\n\t\t\t\tinternal timeout (~p).", [State, NextState], Data}),
+  % ?VSHOW("state_timeout (mixed-choice), (~p) -> (~p),\n\t\t\ttrace:\t~p.\n",[State,NextState,Data],Data),
+  ?VSHOW("state_timeout (mixed-choice),\n\t\t\t(~p) -> (~p),\n\t\t\ttrace:\t~p.\n",[State,NextState,maps:get(trace,Data,trace_not_found)],Data),
   {next_state, NextState, Data};
 %%
 
@@ -925,20 +917,20 @@ when is_map(Data) ->
 %% % % % % % %
 %% retreive latest message of given label
 %% % % % % % %
-handle_event({call, From}, {recv, Label}, _State, #{msgs:=Msgs}=_Data) -> 
-  % show({Name, "~p,\n\t\t\t\tlooking for msg with label (~p).", [State, Label], Data}),
-  case maps:get(Label, Msgs, no_msg_found_under_label) of
-    no_msg_found_under_label=Err -> 
-      % show({"~p, no msgs with label (~p) found.", [State, Label], Data}),
-      ReplyMsg = {error, Err};
-    Matches -> 
-      % NumMsgs = lists:length(Matches),
-      % H = lists:nth(1, Matches),
-      % show({"~p, found msg (~p: ~p) out of ~p.", [State, Label, H, NumMsgs], Data}),
-      ReplyMsg = {ok, #{  label => Label, matches => Matches }}
-  end,
-  {keep_state_and_data, [{reply, From, ReplyMsg}]};
-%%
+% handle_event({call, From}, {recv, Label}, _State, #{msgs:=Msgs}=_Data) -> 
+%   % show({Name, "~p,\n\t\t\t\tlooking for msg with label (~p).", [State, Label], Data}),
+%   case maps:get(Label, Msgs, no_msg_found_under_label) of
+%     no_msg_found_under_label=Err -> 
+%       % show({"~p, no msgs with label (~p) found.", [State, Label], Data}),
+%       ReplyMsg = {error, Err};
+%     Matches -> 
+%       % NumMsgs = lists:length(Matches),
+%       % H = lists:nth(1, Matches),
+%       % show({"~p, found msg (~p: ~p) out of ~p.", [State, Label, H, NumMsgs], Data}),
+%       ReplyMsg = {ok, #{  label => Label, matches => Matches }}
+%   end,
+%   {keep_state_and_data, [{reply, From, ReplyMsg}]};
+% %%
 
 
 
@@ -983,6 +975,7 @@ handle_event({call, From}, {recv, Label}, _State, #{msgs:=Msgs}=_Data) ->
 %% % % % % % %
 %% anything else
 %% % % % % % %
+%% @doc catch any other kind of event and stop.
 handle_event(EventType, EventContent, State, _Data) 
 when is_map(_Data) ->
   %% make sure _Data is usable
