@@ -38,68 +38,50 @@ stub_start_link() -> stub_start_link([]).
 
 
 
-%% @doc 
+%% @doc start link with monitored stub
 stub_start_link(Args) when ?MONITORED=:=true ->
   Params = maps:from_list(Args),
-  ?SHOW("\n\t\tParams:\t~p.\n",[Params],Params),
+  ?SHOW("\n\tParams:\t~p.\n",[Params],Params),
   PID = self(),
 
   %% get name 
   Name = maps:get(name, maps:get(role, Params), ?MODULE),
-  MonitorName = list_to_atom("mon_"++atom_to_list(Name)),
+  MonitorName = Name, %% ! names must be the same for Session/server to find IDs
 
   %% update monitor args with new name
   MonitorArgs = maps:to_list(maps:put(role,maps:put(name,MonitorName,maps:get(role,Params)),Params)),
 
   %% spawn main stub within same node
   StubID = erlang:spawn_link(?MODULE, init, [Args++[{init_sus_id, PID}]]),
-  ?SHOW("\n\t\tStarting stub in (~p).\n",[StubID],Params),
+  ?SHOW("\n\tStarting stub in (~p).\n",[StubID],Params),
 
   %% get monitor spec
   MonitorSpec = case is_map(?MONITOR_SPEC) of true -> ?MONITOR_SPEC; _ -> ?assert(is_map_key(monitor_spec,Params)), maps:get(monitor_spec,Params) end,
 
   %% spawn monitor within same node 
   MonitorID = erlang:spawn_link(node(), gen_monitor, start_link, [MonitorArgs++[{fsm,MonitorSpec},{init_sus_id, PID},{sus_id, StubID}]]),
-  ?SHOW("\n\t\tStarting monitor in (~p).\n",[MonitorID],Params),
+  ?SHOW("\n\tStarting monitor in (~p).\n",[MonitorID],Params),
 
   %% return as monitor
   {ok, MonitorID};
-%%
-
-
-%   %% if ?MONITORED, then either MONITOR_SPEC is map, or params contains 
-%   % case maps:size(?MONITOR_SPEC)>0 of 
-%   case is_boolean(?MONITOR_SPEC) of 
-%     true -> %% if monitor spec not in this file, check in param map
-%       ?assert(maps:is_key(monitor_spec,Params)), 
-%       MonitorSpec = maps:get(monitor_spec, Params);
-%     _ -> MonitorSpec = ?MONITOR_SPEC
-%   end,
-
-%   Name = maps:get(name, maps:get(role, Params)),
-%   MonitorName = list_to_atom("mon_"++atom_to_list(Name)),
-
-%   MonitorArgs = maps:to_list(maps:put(role,maps:put(name,MonitorName,maps:get(role,Params)),Params)),
-
-%   PID = self(),
-
-%   %% spawn monitor within same node 
-%   MonitorID = erlang:spawn_link(node(), gen_monitor, start_link, [MonitorArgs++[{fsm,MonitorSpec},{init_sus_id, PID},{sus_id, erlang:spawn_link(?MODULE, init, [Args++[{init_sus_id, PID}]])}]]),
-
-%   ?SHOW("MonitorID: ~p.",[MonitorID],Params),
-%   {ok, MonitorID};
-% %%
-
 
 
 %% @doc normal unmonitored start_link
 stub_start_link(Args) -> 
   Params = maps:from_list(Args),
   ?SHOW("\n\tParams:\t~p.\n",[Params],Params),
-  InitID = erlang:spawn_link(?MODULE, init, [Args]),
+  PID = self(),
+
+  StubID = erlang:spawn_link(?MODULE, init, [Args++[{init_sus_id, PID}]]),
   
-  ?VSHOW("ID: ~p.",[InitID],Params),
-  {ok, InitID}.
+  %% get name 
+  Name = maps:get(name, maps:get(role, Params), ?MODULE),
+
+  %% register stub under name
+  erlang:register(Name,StubID),
+
+  ?SHOW("\n\tStarting stub in (~p).\n",[StubID],Params),
+  {ok, StubID}.
 %%
 
 
@@ -108,98 +90,140 @@ stub_start_link(Args) ->
 
 
 %% @doc called after start_link returns
-stub_init(Args) when ?MONITORED=:=true ->
+stub_init(Args) ->
+  %  when ?MONITORED=:=true ->
   Params = maps:from_list(Args),
-  ?SHOW("\n\tParams:\t~p.\n",[Params],Params),
+  ?SHOW("\n\tParams: ~p.\n",[Params],Params),
 
   ?assert(is_map_key(role,Params)),
   ?assert(is_map_key(session_name,Params)),
-  ?assert(is_map_key(init_sus_id,Params)),
+  % ?assert(is_map_key(init_sus_id,Params)),
 
   %% unpack from param map
   #{role:=#{module:=Module,name:=Name}=Role,session_name:=SessionName,init_sus_id:=InitID} = Params,
 
+  %% make data
+  Data = maps:put(role,Role,default_stub_data()),
+
   %% wait for session to finish setting up
-  ?SHOW("\n\tWaiting for Session (~p) to finish setting up.\n",[SessionName],Params),
-  receive {Name,SessionName,SessionID} -> 
+  ?SHOW("\n\tWaiting to receive SessionID from session/server.\n",[],Params),
+  receive {init_state_message,{session_id,SessionID}} ->
 
-    %% get pid of server running session
-    ?assert(is_pid(SessionID)=:=whereis(SessionName)),
-    ?assert(is_process_alive(SessionID)),
+    %% add to data
+    Data1 = maps:put(session_id,SessionID,Data),
 
-    %% exchange with server current ID
-    SessionID ! {{name,Name},{module,Module},{init_id,InitID},{pid,self()}},
-    % receive {}
+    MsgSessionInit = {{name,Name},{module,Module},{init_id,InitID},{pid,self()}},
 
-    ok
+    case ?MONITORED of 
+      %% dont send if monitored
+      true -> ok;
+      %% send to session if unmonitored
+      _ -> 
+        timer:sleep(50),
+        %% exchange with server current ID
+        SessionID ! MsgSessionInit
+    end,
 
-  end;
+    ?SHOW("\n\tRecv'd SessionID (~p).\n\n\tSent self back to SessionID: ~p.\n\n\tWaiting to receive CoPartyID from session/server.\n",[SessionID,MsgSessionInit],Params),
+    receive {SessionID, {coparty_id, CoPartyID}} ->
+
+      %% update to contain ids
+      Data2 = maps:put(coparty_id,CoPartyID,Data1),
+
+      case ?MONITORED of
+        %% dont exchange if monitored
+        true -> ok;
+        %% exchange ids with coparty
+        _ ->
+          %% send init to coparty
+          MsgCoPartyInit = {self(),init,SessionID},
+          CoPartyID ! MsgCoPartyInit,
+
+          ?SHOW("\n\tSent CoParty (~p): ~p.\n\n\tWaiting to receive init message from CoParty (~p).\n",[CoPartyID,MsgCoPartyInit,CoPartyID],Data2),
+    
+          receive {CoPartyID, init, SessionID} ->
+            ?VSHOW("\n\tRecv'd init fom CoParty (~p).\n\n\tSent ready signal to Session (~p),\n\tand waiting for start signal.\n",[CoPartyID,SessionID],Data2),
+            
+            %% tell session ready to proceed
+            SessionID ! {self(), ready}
+          end  
+      end,
+
+      %% return to stub to finish setup (passing params to monitor)
+      {ok, Data2}
+
+    end
+  end.
+%%
 
 
+
+
+
+% %% @doc init function for unmonitored process.
+% stub_init(Args) ->
+%   Params = maps:from_list(Args),
+%   ?SHOW("\n\tParams:\t~p.\n",[Params],Params),
+
+%   ?assert(is_map_key(role,Params)),
+%   ?assert(is_map_key(session_name,Params)),
+%   ?assert(is_map_key(init_sus_id,Params)),
 
 %   %% unpack from param map
-% ?assert(is_map_key(role,Params)),
-% Role = maps:get(role,Params),
+%   #{role:=#{module:=Module,name:=Name}=Role,session_name:=SessionName,init_sus_id:=InitID} = Params,
 
+%   %% wait for session to finish setting up
+%   ?SHOW("\n\tWaiting to receive init message from session/server.\n",[],Params),
+%   receive {init_state_message,{session_id,SessionID}} ->
+
+%     %% get pid of server running session
+%     ?assert(is_pid(SessionID)=:=whereis(SessionName)),
+%     ?assert(is_process_alive(SessionID)),
+
+%     %% exchange with server current ID
+%     SessionID ! {{name,Name},{module,Module},{init_id,InitID},{pid,self()}},
+%     % receive {}
+
+%     ok
+
+%   end,
+
+%   %% TODO below is old, integrate with above
+
+
+
+%   Params = maps:from_list(Args),
+%   ?SHOW("\n\t\tParams:\t~p.\n",[Params],Params),
+%   PID = self(),
+
+%   %% unpack from param map
+%   Role = maps:get(role,Params,role_unspecified),
 
 %   InitSessionID = maps:get(session_id,Params,no_session_id_found),
 %   ?VSHOW("InitSessionID: ~p.",[InitSessionID],Params),
 %   ?assert(is_pid(InitSessionID)),
 
-%   Data = maps:put(role,Role,default_stub_data()),
+%   InitSessionID ! {self(),role,Role},
 
-%   %% receive message from monitor
-%   SusInitID = maps:get(init_sus_id,Params),
-%   ?VSHOW("\n\t\t\twaiting to recv real monitor ID,\n\t\t\t(init_sus_id = ~p)\n\t\t\t(init_session_id = ~p).\n",[SusInitID,InitSessionID],Data),
-%   receive 
-%     {{monitor_id,MonitorID},{init_sus_id, SusInitID},{init_session_id,InitSessionID},{session_id,SessionID}} ->
-%       ?VSHOW("recv'd monitor id: ~p.\n\n\n",[MonitorID],Data),
-%       Data1 = maps:put(session_id,SessionID,Data),
-%       Data2 = maps:put(coparty_id,MonitorID,Data1),
-%       {ok, Data2}
+%   Data = maps:put(session_id,InitSessionID,default_stub_data()),
+%   Data1 = maps:put(role,maps:get(role,Params),Data),
 
-% after 10000 -> io:format("no message!"), timer:sleep(5000),{stop, Data}
-%   end;
-%%
-
-
-
-
-
-%% @doc init function for unmonitored process.
-stub_init(Args) ->
-  Params = maps:from_list(Args),
-  ?SHOW("\n\t\tParams:\t~p.\n",[Params],Params),
-  PID = self(),
-
-  %% unpack from param map
-  Role = maps:get(role,Params,role_unspecified),
-
-  InitSessionID = maps:get(session_id,Params,no_session_id_found),
-  ?VSHOW("InitSessionID: ~p.",[InitSessionID],Params),
-  ?assert(is_pid(InitSessionID)),
-
-  InitSessionID ! {self(),role,Role},
-
-  Data = maps:put(session_id,InitSessionID,default_stub_data()),
-  Data1 = maps:put(role,maps:get(role,Params),Data),
-
-  % %% wait to receive coparty id from session
-  ?VSHOW("\n\t\t\twaiting to receive CoPartyID from session.\n",[],Data1),
-  receive {InitSessionID, {session_id,SessionID}, {coparty_id, CoPartyID}} ->
-    ?VSHOW("received CoPartyID (~p) from SessionID (~p),\n\t\t\tnow waiting for init message from CoParty.",[CoPartyID, SessionID],Data1),
-    Data2 = maps:put(coparty_id,CoPartyID,Data1),
-    Data3 = maps:put(session_id,SessionID,Data2),
-    %% exchange init message
-    CoPartyID ! {PID, init},
-    receive {CoPartyID, init} ->
-      ?VSHOW("\n\t\t\tnow telling session (~p) ready,\n\t\t\tand waiting for signal to start.\n",[SessionID],Data3),
-      %% tell session ready to proceed
-      SessionID ! {self(), ready},
-      {ok, Data3}
-    end
-  end.
-%%
+%   % %% wait to receive coparty id from session
+%   ?VSHOW("\n\t\t\twaiting to receive CoPartyID from session.\n",[],Data1),
+%   receive {InitSessionID, {session_id,SessionID}, {coparty_id, CoPartyID}} ->
+%     ?VSHOW("received CoPartyID (~p) from SessionID (~p),\n\t\t\tnow waiting for init message from CoParty.",[CoPartyID, SessionID],Data1),
+%     Data2 = maps:put(coparty_id,CoPartyID,Data1),
+%     Data3 = maps:put(session_id,SessionID,Data2),
+%     %% exchange init message
+%     CoPartyID ! {PID, init},
+%     receive {CoPartyID, init} ->
+%       ?VSHOW("\n\t\t\tnow telling session (~p) ready,\n\t\t\tand waiting for signal to start.\n",[SessionID],Data3),
+%       %% tell session ready to proceed
+%       SessionID ! {self(), ready},
+%       {ok, Data3}
+%     end
+%   end.
+% %%
 
 
 
@@ -223,7 +247,7 @@ set_timer(Name, Duration, #{coparty_id:=CoParty,timers:=Timers}=Data) when ?MONI
   %% call monitor synchronously to do this
   %% monitor returns their updated copy of timer map.
   Timers1 = gen_statem:call(CoParty,{set_timer, {Name, Duration}, Timers}),
-  ?VSHOW("received response from (~p),\n\t\t\told timers:\t~p,\n\t\t\tnew timers:\t~p.",[CoParty,Timers,Timers1],Data),
+  ?VSHOW("\n\treceived response from (~p),\n\told timers: ~p,\n\tnew timers: ~p.\n",[CoParty,Timers,Timers1],Data),
   %% return with updated timers
   maps:put(timers,Timers1,Data);
 %%
@@ -235,7 +259,7 @@ set_timer(Name, Duration, #{timers:=Timers}=Data) when is_map_key(Name,Timers) -
   %% start new timer
   TID = erlang:start_timer(Duration, self(), Name),
   Data1 = maps:put(timers, maps:put(Name, TID, Timers), Data),
-  ?VSHOW("reset timer ~p (~p),\n\t\t\told data:\t~p,\n\t\t\tnew data:\t~p.",[Name,TID,Data,Data1],Data1),
+  ?VSHOW("\n\treset timer ~p (~p),\n\told data: ~p,\n\tnew data: ~p.\n",[Name,TID,Data,Data1],Data1),
   Data;
 %%
 
@@ -244,7 +268,7 @@ set_timer(Name, Duration, #{timers:=Timers}=Data) ->
   %% start new timer
   TID = erlang:start_timer(Duration, self(), Name),
   Data1 = maps:put(timers, maps:put(Name, TID, Timers), Data),
-  ?VSHOW("set new timer ~p (~p),\n\t\t\told data:\t~p,\n\t\t\tnew data:\t~p.",[Name,TID,Data,Data1],Data1),
+  ?VSHOW("\n\tset new timer ~p (~p),\n\told data: ~p,\n\tnew data: ~p.\n",[Name,TID,Data,Data1],Data1),
   Data1.
 %%
 
@@ -258,7 +282,7 @@ when is_atom(Name) and is_map_key(Name, Timers) ->
 %% @doc returns `{ko, no_such_timer}` if timer does not exist.
 get_timer(_Name, #{timers:=_Timers}=_Data)
 when not is_map_key(_Name, _Timers) -> 
-  ?VSHOW("timer (~p) not found in timers:\n\t\t\t~p.",[_Name,_Timers],_Data),
+  ?VSHOW("\n\ttimer (~p) not found in timers:\n\t~p.\n",[_Name,_Timers],_Data),
   {ko, no_such_timer}.
 %%
 
@@ -332,7 +356,7 @@ when is_integer(Timeout) ->
     TimeConsumer = spawn( fun() -> Waiter ! {self(), ok, Fun(Args)} end ),
     receive 
       {TimeConsumer, ok, Result} -> 
-        ?VSHOW("payload completed within (~pms),\n\t\t\tResult:\t~p.",[Timeout,Result],Data),
+        ?VSHOW("\n\tpayload completed within (~pms),\n\tResult: ~p.\n",[Timeout,Result],Data),
         %% check structure of result
         case Result of
 
@@ -352,7 +376,7 @@ when is_integer(Timeout) ->
           PID ! {self(), ko},
           %
           receive {TimeConsumer, ok, Result} -> 
-            ?VSHOW("(persistent) payload completed (~pms),\n\t\t\tResult:\t~p.",[Timeout,Result],Data),
+            ?VSHOW("\n\t(persistent) payload completed (~pms),\n\tResult: ~p.\n",[Timeout,Result],Data),
             %% check structure of result
             case Result of
 
@@ -366,7 +390,7 @@ when is_integer(Timeout) ->
 
         %% if not persistent, then just return to stub and kill processor
         _ ->
-          ?VSHOW("payload did not complete within (~pms) sending ko.",[Timeout],Data),
+          ?VSHOW("\n\tpayload did not complete within (~pms) sending ko.",[Timeout],Data),
           PID ! {self(), ko}, 
           exit(TimeConsumer, normal) 
         end
@@ -379,9 +403,9 @@ when is_integer(Timeout) ->
 %% @see nonblocking_payload with Timeout
 nonblocking_payload(Fun, Args, PID, TimerRef, Data) 
 when is_reference(TimerRef) ->
-  ?VSHOW("fetching value of timer-ref (~p).",[TimerRef],Data),
+  ?VSHOW("\n\tfetching value of timer-ref (~p).",[TimerRef],Data),
   Duration = erlang:read_timer(TimerRef),
-  ?VSHOW("remaining duration timer is (~pms).",[Duration],Data),
+  ?VSHOW("\n\tremaining duration timer is (~pms).",[Duration],Data),
   nonblocking_payload(Fun, Args, PID, Duration, Data);
 %%
 
@@ -389,7 +413,7 @@ when is_reference(TimerRef) ->
 %% @see nonblocking_payload with Timeout
 nonblocking_payload(Fun, Args, PID, Timer, Data) 
 when is_atom(Timer) ->
-  ?VSHOW("fetching ref of timer (~p).",[Timer],Data),
+  ?VSHOW("\n\tfetching ref of timer (~p).",[Timer],Data),
   TimerRef = get_timer(Timer,Data),
   nonblocking_payload(Fun, Args, PID, TimerRef, Data).
 %%
@@ -406,31 +430,31 @@ nonblocking_selection(Fun, Args, PID, Timeout, Data) when is_integer(Timeout) ->
   spawn( fun() -> 
     %% spawn timer in the case of being passed to nonblocking_payload, need to take into account the duration of Fun
     Timer = erlang:start_timer(Timeout, self(), nonblocking_selection),
-    ?VSHOW("started timer (~p)",[Timer],Data),
+    ?VSHOW("\n\tstarted timer (~p)",[Timer],Data),
     Selector = self(),
     %% spawn process in same node to send back results of selection
     SelectingWorker = spawn( fun() -> Selector ! {self(), ok, Fun(Args)} end ),
-    ?VSHOW("waiting to get selection back from (~p)",[SelectingWorker],Data),
+    ?VSHOW("\n\twaiting to get selection back from (~p)",[SelectingWorker],Data),
     receive 
       %% if worker process determines selection, and returns necessary function/args to obtain payload to send
       {SelectingWorker, ok, {PayloadFun, PayloadArgs}=R} -> 
-        ?VSHOW("selection made before (~p) completes,\n\t\t\tResult:\t~p.",[Timer,R],Data),
+        ?VSHOW("\n\tselection made before (~p) completes,\n\tResult: ~p.",[Timer,R],Data),
         %% spawn new process using function to obtain payload
         NonBlocking = nonblocking_payload(PayloadFun, PayloadArgs, self(), Timer, Data),
-        ?VSHOW("waiting to get payload back from (~p).",[NonBlocking],Data),
+        ?VSHOW("\n\twaiting to get payload back from (~p).",[NonBlocking],Data),
         %% forward result of nonblocking_waiter to PID
         receive 
           {NonBlocking, ok, {_Label, _Payload}=Result} -> 
-            ?VSHOW("payload received: (~p: ~p).",[_Label, _Payload],Data),
+            ?VSHOW("\n\tpayload received: (~p: ~p).",[_Label, _Payload],Data),
             PID ! {self(), ok, Result};
           {NonBlocking, ko} -> 
-            ?VSHOW("payload returned ko.",[],Data),
+            ?VSHOW("\n\tpayload returned ko.",[],Data),
             PID ! {self(), ko}, 
             exit(NonBlocking, normal) 
           end;
       %% if timer expires first, signal PID that after-branch should be taken and terminate workers
       {timeout, Timer, nonblocking_selection} -> 
-        ?VSHOW("selecting worker took longer than (~p) to complete.",[Timer],Data),
+        ?VSHOW("s\n\telecting worker took longer than (~p) to complete.",[Timer],Data),
         PID ! {self(), ko}, 
         exit(SelectingWorker, normal) 
     end 
@@ -440,9 +464,9 @@ nonblocking_selection(Fun, Args, PID, Timeout, Data) when is_integer(Timeout) ->
 %% @doc re-directs to function that takes integer value, which is here derived from the timer.
 nonblocking_selection(Fun, Args, PID, Timer, Data) when is_atom(Timer) ->
   TID = get_timer(Timer,Data),
-  ?VSHOW("fetching value of timer (~p, ~p).",[Timer,TID],Data),
+  ?VSHOW("\n\tfetching value of timer (~p, ~p).",[Timer,TID],Data),
   Duration = erlang:read_timer(TID),
-  ?VSHOW("remaining duration of (~p) is: ~pms.",[Timer,Duration],Data),
+  ?VSHOW("\n\tremaining duration of (~p) is: ~pms.",[Timer,Duration],Data),
   nonblocking_selection(Fun, Args, PID, Duration, Data).
 %%
 
@@ -455,10 +479,10 @@ nonblocking_selection(Fun, Args, PID, Timer, Data) when is_atom(Timer) ->
 send_before(CoPartyID, {Label, {Fun, Args}}, Timeout, Data) 
 when is_pid(CoPartyID) and is_atom(Label) -> 
   NonBlocking = nonblocking_payload(Fun, Args, self(), Timeout, Data),
-  ?VSHOW("waiting to receive payload from (~p) to send (~p).",[NonBlocking,Label],Data),
+  ?VSHOW("\n\twaiting to receive payload from (~p) to send (~p).",[NonBlocking,Label],Data),
   receive 
     {NonBlocking, ok, Payload} -> 
-      ?VSHOW("for (~p), payload: ~p.",[Label,Payload],Data),
+      ?VSHOW("\n\tfor (~p), payload: ~p.",[Label,Payload],Data),
       send(CoPartyID, {Label, Payload}, Data);
     {NonBlocking, ko} -> 
       ko
@@ -470,13 +494,13 @@ when is_pid(CoPartyID) and is_atom(Label) ->
 %% @doc 
 recv_before(CoPartyID, Label, Timeout, Data) 
 when is_pid(CoPartyID) and is_atom(Label) -> 
-  ?VSHOW("waiting to receive (~p) within (~pms),",[Label,Timeout],Data),
+  ?VSHOW("\n\twaiting to receive (~p) within (~pms),",[Label,Timeout],Data),
   receive 
     {CoPartyID, Label, Payload} -> 
       ?VSHOW("recv'd (~p: ~p).",[Label,Payload],Data),
       {ok, Payload} 
   after Timeout -> 
-    ?VSHOW("timeout, did not recv (~p).",[Label],Data),
+    ?VSHOW("\n\ttimeout, did not recv (~p).",[Label],Data),
     {ko, timeout} 
   end.
 
@@ -496,7 +520,7 @@ when is_pid(CoPartyID) and is_atom(Label) ->
 %% @doc Wrapper function for receiving message asynchronously
 recv(CoPartyID, Label, Data) 
 when is_pid(CoPartyID) and is_atom(Label) -> 
-  ?VSHOW("waiting to receive (~p).",[Label],Data),
+  ?VSHOW("\n\twaiting to receive (~p).",[Label],Data),
   receive 
     {CoPartyID, Label, Payload} -> 
       ?VSHOW("recv'd (~p: ~p).",[Label,Payload],Data),

@@ -62,10 +62,10 @@ default_options() ->
      selected_preset => validation,
      enforcement_configuration => default_options(enforcement_configuration),
      grace_period => #{ send => #{ enabled => true, num => 1, count => 0, immunity_state => undefined },
-                        recv => #{ enabled => true, num => 1, count => 0, immunity_state => undefined } }
+                        recv => #{ enabled => true, num => 1, count => 0, immunity_state => undefined } },
     %  delayable_sends => default_options(delayable_sends),
     %  queue => default_options(queue),
-    %  forward_receptions => default_options(forward_receptions),
+     forward_receptions => default_options(forward_receptions)
     %  support_auto_label => default_options(support_auto_label) %% only relevant to sending actions
     }.
 

@@ -77,7 +77,7 @@ init(finished, Params) ->
 
   %% add server role
   ServerName = toast_session,
-  ServerRole = #{module=>toast_server,name=>ServerName, roles=>_Roles},
+  ServerRole = #{module=>toast_server,name=>ServerName},
 
   Roles = _Roles ++ [ServerRole],
 
@@ -90,7 +90,14 @@ init(finished, Params) ->
   %% create supervisor for each role
   SpecFun = fun(#{module:=ModuleName,name:=RoleName}=Role, AccIn) -> 
       RegID = RoleName,
-      AccIn ++ [child_spec(ModuleName,RegID,ChildOptions,[{role,Role},{session_name,ServerName}])]
+      %% server/stub have different extra 
+      Extra = case RoleName of 
+        %% is server
+        ServerName -> [{roles,_Roles}];
+        %% is stub
+        _ -> [{session_name,ServerName}]
+      end,
+      AccIn ++ [child_spec(ModuleName,RegID,ChildOptions,[{role,Role}]++Extra)]
       % AccIn ++ [child_spec(ModuleName,RegID,ChildOptions,[{init_session_id,SessionID},{role,Role}])]
   end,
 

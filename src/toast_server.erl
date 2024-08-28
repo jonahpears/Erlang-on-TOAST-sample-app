@@ -21,8 +21,8 @@
           init/1,
           stop/0,
           handle_call/3,
-          handle_cast/2
-          % handle_info/2
+          handle_cast/2,
+          handle_info/2
          ]).
 
 -export([ start_link/1 ]).
@@ -56,87 +56,201 @@ stop() ->
 %% called once server started and registered process (ready to receive)
 init(Args) -> 
   Params = maps:from_list(Args),
-  ?SHOW("\n\t\tParams:\t~p.\n",[Params],Params),
+  ?SHOW("\n\tParams:\t~p.\n\n\n\n\n",[Params],Params),
+  % timers:sleep(5000),
 
-  ?assert(is_map_key(module,Params)),
-  ?assert(is_map_key(name,Params)),
+  ?assert(is_map_key(role,Params)),
   ?assert(is_map_key(roles,Params)),
 
   %% unpack params
-  #{roles:=Roles,name:=Name,module:=Module} = Params,
+  #{roles:=Roles,role:=#{name:=Name,module:=Module}} = Params,
 
   %% update roles to display if initialised
   Roles1 = lists:foldl(fun(#{name:=RoleName,module:=RoleModule}=_R, L) -> 
-    L++[#{name=>RoleName,module=>RoleModule,pid=>undefined,init=>false,status=>undefined}]
+    L++[#{name=>RoleName,module=>RoleModule,init_id=>undefined,pid=>undefined,init=>false,ready=>false,started=>false,status=>undefined}]
+    % maps:put(RoleName,#{name=>RoleName,module=>RoleModule,pid=>undefined,init=>false,status=>undefined},L)
   end, [], Roles),
 
-  % %% create ets for session
-  % ets:new(?ETS, [set,named_table,protected]),
-  % ets:insert(?ETS, {init_session_id, self()}),
+  State = #{state=>init_ids_state,name=>Name,module=>Module,roles=>Roles1,params=>Params},
+  ?SHOW("\n\tState: ~p.\n",[State],Params),
 
-  % %% store role names
-  % RoleNames = lists:foldl(fun(#{name:=RoleName}=_R,L) -> L++[RoleName] end, [], Roles),
-  % ets:insert(?ETS, {roles, RoleNames}),
-
-  % %% store roles
-  % lists:foreach(fun(#{name:=RoleName,module:=RoleModule}=Role) ->
-  %   %% should be unique
-  %   %% make sure has not already been added
-  %   ?assert(length(ets:lookup(?ETS,RoleName))==0),
-  %   %% add to ets
-  %   ets:insert(?ETS, {RoleName,#{name=>RoleName,module=>RoleModule,pid=>undefined,init=>false}})
-  % end, Roles),
-
-  % SessionID ! {{name,Name},{module,Module},{init_id,InitID},{pid,self()}},
-
-  % [{app_id,AppID}|_T] = ets:lookup(tpri,app_id),
-  % printout("~p, lookup AppID: ~p.", [?FUNCTION_NAME, AppID]),
-  % AppID ! {tpri, server_id, self()},
-
-  % {ok, _SupID} = toast_sup:start_link(Params),
-
-  {ok, #{state=>init_state,name=>Name,module=>Module,roles=>Roles1}, 0}.
+  {ok, State, 0}.
 
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
-%% @doc handle reception of
-handle_info(timeout, #{state:=init_state}=_State) ->
-  %% get existing ets
-  Role = ets_take_single(?ETS,Name),
-  %% update
-  Role1 = maps:put(pid,StubID,Role),
-  Role2 = maps:put(init,true,Role1),
-  %% add to ets
-  ets:insert(?ETS, {Name, Role2}),
-  %% check what state to be in
-  NextState = case length(lists:foldl(fun(#{init:=IsInit}=_R,I) -> case IsInit of true -> I+1; _ -> I end end, 0, ets:lookup(?ETS,roles)))==2 of true -> live_state; _ -> init_state end,
-  %% make reply
-  Reply = ok,
-  %% return
-  {reply,Reply,NextState}.
+%% @doc periodically check if other parties in session are 
+handle_info(timeout, #{state:=init_ids_state=StateName,roles:=Roles,params:=Params}=State) ->
+  ?SHOW("~p.",[StateName],Params),
+
+  %% check if each role is registered under their name
+  {InitRoleNum,NewRoles} = lists:foldl(fun(#{name:=Name,init_id:=InitID}=R, {I,L}) -> 
+    case InitID of 
+      %% currently undefined, check for id
+      undefined -> 
+        NewInitID = whereis(Name),
+        ?SHOW("\n\tRole (~p) currently undefined.\n\twhereis(~p) = ~p.\n",[Name,Name,NewInitID],Params),
+        case is_pid(NewInitID) of 
+          %% is id, add to state data and send message
+          true -> 
+            NewInitID ! {init_state_message,{session_id,self()}},
+            {I+1, L++[maps:put(init_id,NewInitID,R)]};
+
+          %% is not id, check again later
+          _ -> {I, L++[R]}
+
+        end;
+
+      %% already got pid, leave unchanged
+      _ -> {I+1,L++[R]} 
+    end
+  end, {0, []}, Roles),
+  
+  %% update state roles
+  State1 = maps:put(roles,NewRoles,State),
+
+  case InitRoleNum==length(Roles) of 
+
+    %% all roles are init for next phase
+    true -> 
+      ?SHOW("\n\tAll roles located for next phase,\n\t~p\n",[NewRoles],Params),
+      {noreply, maps:put(state,recv_ids_state,State1)};
+
+    %% still need to wait some more
+    _ -> 
+      ?SHOW("\n\tOnly (~p/~p) roles located.\n",[InitRoleNum,length(Roles)],Params),
+      {noreply, State1, 50}
+
+  end;
 %%
 
-%% @doc handle reception of
-handle_info({name,Name},{module,Module},{init_id,_InitID},{pid,StubID}, #{state:=init_state}=_State) ->
-  %% get existing ets
-  Role = ets_take_single(?ETS,Name),
-  %% update
-  Role1 = maps:put(pid,StubID,Role),
-  Role2 = maps:put(init,true,Role1),
-  %% add to ets
-  ets:insert(?ETS, {Name, Role2}),
-  %% check what state to be in
-  NextState = case length(lists:foldl(fun(#{init:=IsInit}=_R,I) -> case IsInit of true -> I+1; _ -> I end end, 0, ets:lookup(?ETS,roles)))==2 of true -> live_state; _ -> init_state end,
-  %% make reply
-  Reply = ok,
-  %% return
-  {reply,Reply,NextState}.
+%% @doc handle reception of initial ids 
+handle_info({{name,Name},{module,Module},{init_id,_InitID},{pid,StubID}}, #{state:=recv_ids_state=StateName,roles:=Roles,params:=Params}=State) ->
+  ?SHOW("~p.",[StateName],Params),
+
+  %% update corresponding roles id
+  NewRoles = lists:foldl(fun(#{name:=RoleName}=R, L) -> 
+    case RoleName=:=Name of 
+      %% corresponding role
+      true -> L++[maps:put(pid,StubID,R)];
+      %% some other role, leave unchanged
+      _ -> L++[R]
+    end
+  end, [], Roles),
+
+  %% determine next state
+  NextState = case lists:foldl(fun(#{pid:=PID}=R, B) -> case PID=:=undefined of true -> B and false; _ -> B and true end end, true, NewRoles) of true -> exchange_ids_state; _ -> recv_ids_state end,
+  
+  %% update state data 
+  State1 = maps:put(roles,NewRoles,State),
+  State2 = maps:put(state,NextState,State1),
+
+  case NextState of 
+
+    %% if running state, then go to timeout and send start to both
+    exchange_ids_state -> 
+      ?SHOW("\n\tAll roles init.\n",[],Params),
+      {noreply, State2, 0};
+    
+    %% wait for other init
+    _ -> 
+      ?SHOW("\n\tRecv'd init from (~p).\n",[StubID],Params),
+      {noreply, State2}
+
+  end;
 %%
 
+%% @doc handle exchange of ids
+handle_info(timeout, #{state:=exchange_ids_state=StateName,roles:=Roles,params:=Params}=State) ->
+  ?SHOW("~p.",[StateName],Params),
 
+  %% get each role in binary session
+  ?assert(length(Roles)==2),
+  RoleA = lists:nth(1,Roles),
+  RoleB = lists:nth(2,Roles),
+
+  %% get ids of each role
+  #{pid:=APID} = RoleA,
+  #{pid:=BPID} = RoleB,
+
+  %% exchange
+  APID ! {self(), {coparty_id, BPID}},
+  BPID ! {self(), {coparty_id, APID}},
+  ?SHOW("\n\tExchanged PIDs of:\n\t\t(~p)\n\t\t(~p).\n",[RoleA,RoleB],Params),
+
+  State1 = maps:put(state,ready_state,State),
+
+  {noreply, State1};
+%%
+
+%% @doc handle reception of ready 
+handle_info({StubID,ready}, #{state:=ready_state=StateName,roles:=Roles,params:=Params}=State) ->
+  ?SHOW("~p.",[StateName],Params),
+
+  %% update corresponding roles id
+  NewRoles = lists:foldl(fun(#{pid:=PID}=R, L) -> 
+    case PID=:=StubID of 
+      %% corresponding role
+      true -> L++[maps:put(ready,true,R)];
+      %% some other role, leave unchanged
+      _ -> L++[R]
+    end
+  end, [], Roles),
+
+  %% determine next state
+  NextState = case lists:foldl(fun(#{ready:=Ready}=R, B) -> case Ready of true -> B and true; _ -> B and false end end, true, NewRoles) of true -> start_state; _ -> ready_state end,
+
+  State1 = maps:put(state,NextState,State),
+  State2 = maps:put(roles,NewRoles,State1),
+
+  case NextState of 
+
+    %% if running state, then go to timeout and send start to both
+    start_state -> 
+      ?SHOW("\n\tAll roles ready.\n",[],Params),
+      {noreply, State2, 0};
+    
+    %% wait for other ready
+    _ -> 
+      ?SHOW("\n\tRecv'd ready from (~p).\n",[StubID],Params),
+      {noreply, State2}
+
+  end;
+%%
+
+handle_info(timeout, #{state:=start_state=StateName,roles:=Roles,params:=Params}=State) ->
+  ?SHOW("~p.",[StateName],Params),
+
+  %% get each role in binary session
+  ?assert(length(Roles)==2),
+  RoleA = lists:nth(1,Roles),
+  RoleB = lists:nth(2,Roles),
+
+  %% get ids of each role
+  #{pid:=APID} = RoleA,
+  #{pid:=BPID} = RoleB,
+
+  %% exchange
+  APID ! {self(), start},
+  BPID ! {self(), start},
+  ?SHOW("\n\tSent start signal to:\n\t\t(~p)\n\t\t(~p).\n",[RoleA,RoleB],Params),
+
+  %% update roles
+  RoleA1 = maps:put(started,true,RoleA),
+  RoleB1 = maps:put(started,true,RoleB),
+
+  State1 = maps:put(state,running_state,State),
+  State2 = maps:put(roles,[RoleA1,RoleB1],State1),
+
+  {noreply, State2};
+%%
+
+handle_info(Msg, #{state:=running_state=StateName,params:=Params}=State) ->
+  ?SHOW("~p,\n\tUnhandled msg: ~p.\n",[StateName,Msg],Params),
+  {noreply, State}.
+%%
 
 % handle_call(, _From, _State) ->
 

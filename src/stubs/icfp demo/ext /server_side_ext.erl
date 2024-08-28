@@ -6,7 +6,7 @@
 
 -define(MONITORED, true).
 
--define(SHOW_MONITORED, case ?MONITORED of true -> "(monitored) "; _ -> "" end).
+-define(SHOW_MONITORED, case ?MONITORED of true -> "(m) "; _ -> "" end).
 
 -define(SHOW_ENABLED, true).
 
@@ -58,6 +58,7 @@ init(Args) ->
             ?VSHOW("finished setting options for monitor.", [], Data);
         _ -> ok
     end,
+    ?SHOW("waiting to received start signal from session (~p)",[SessionID],Data),
     receive
         {SessionID, start} ->
             ?SHOW("received start signal from session.", [], Data),
@@ -99,31 +100,35 @@ main(CoParty, Data) ->
 loop_state2(CoParty, Data) ->
     AwaitPayload2 = nonblocking_payload(fun get_payload2/1, {error, Data}, self(), 1000, Data),
     % ?VSHOW("waiting for payload to be returned from (~p).", [AwaitPayload2], Data),
-    ?SHOW("started new processor (~p) for latest data.", [AwaitPayload2], Data),
-    ?SHOW("waiting for news of error from processors.", [], Data),
+    ?SHOW("\n\tstarted new processor (~p) for latest data.\n\twaiting for news of error from processors.\n", [AwaitPayload2], Data),
     receive
-        {_AwaitPayload2, ok, {error = Label2, Payload2}} ->
-            % ?VSHOW("payload obtained:\n\t\t{~p, ~p}.", [Label2, Payload2], Data),
-            ?SHOW("processor (~p) found error!\n\t\tin: ~p.",[_AwaitPayload2,Payload2], Data),
-            CoParty ! {self(), error, Payload2},
-            Data1 = save_msg(send, error, Payload2, Data),
-            % error(unspecified_error),
-            stopping(error_in_processing, CoParty, Data1);
-        {AwaitPayload2, ko} ->
-            % ?VSHOW("unsuccessful payload. (probably took too long)", [], Data),
-            ?SHOW("no error received from processors.", [], Data),
-            ?SHOW("waiting to recv either {data} or {stop}.", [], Data),
-            receive
-                {CoParty, data = Label6, Payload6} ->
-                    Data1 = save_msg(recv, data, Payload6, Data),
-                    ?SHOW("recv ~p: ~p.", [Label6, Payload6], Data1),
-                    loop_state2(CoParty, Data1);
-                {CoParty, stop = Label6, Payload6} ->
-                    Data1 = save_msg(recv, stop, Payload6, Data),
-                    ?SHOW("recv ~p: ~p.", [Label6, Payload6], Data1),
-                    stopping(normal, CoParty, Data1)
-            end
+        {_AwaitPayload2, ok, {Label2, Payload2}} ->
+            case Label2 of
+              %% if error
+              error ->
+                ?SHOW("processor (~p) found error!\n\t\tin: ~p.",[_AwaitPayload2,Payload2], Data),
+                CoParty ! {self(), error, Payload2},
+                Data1 = save_msg(send, error, Payload2, Data),
+                % error(unspecified_error),
+                stopping(error_in_processing, CoParty, Data1);
+              %% if not error, then ignore
+              _ -> no_error_body(CoParty,Data)
+            end;
+        {AwaitPayload2, ko} -> no_error_body(CoParty,Data)
     end.
+
+no_error_body(CoParty,Data) ->
+  ?SHOW("\n\tno error received from processors.\n\n\twaiting to recv either {data} or {stop}.\n", [], Data),
+  receive
+      {CoParty, data = Label6, Payload6} ->
+          Data1 = save_msg(recv, data, Payload6, Data),
+          ?SHOW("recv ~p: ~p.", [Label6, Payload6], Data1),
+          loop_state2(CoParty, Data1);
+      {CoParty, stop = Label6, Payload6} ->
+          Data1 = save_msg(recv, stop, Payload6, Data),
+          ?SHOW("recv ~p: ~p.", [Label6, Payload6], Data1),
+          stopping(normal, CoParty, Data1)
+  end.
 
 %%% @doc Adds default reason 'normal' for stopping.
 %%% @see stopping/3.

@@ -6,9 +6,9 @@
 
 -define(MAX_DATA_PERIOD, 1000).
 
--define(MONITORED, true).
+-define(MONITORED, false).
 
--define(SHOW_MONITORED, case ?MONITORED of true -> "(monitored) "; _ -> "" end).
+-define(SHOW_MONITORED, case ?MONITORED of true -> "(m) "; _ -> "" end).
 
 -define(SHOW_ENABLED, true).
 
@@ -27,9 +27,9 @@
                 state2_recv_after => #{recv => #{error => stop_state}},
                 state5_send_after => #{send => #{data => state2_recv_after}}, 
                 state7_std => #{send => #{stop => stop_state}}},
-          timeouts => #{state2_recv_after => {1000, state5_send_after}, state5_send_after => {0, state7_std}}, errors => #{}, resets => #{}}).
+          timeouts => #{state2_recv_after => {1000, state5_send_after}, state5_send_after => {50, state7_std}}, errors => #{}, resets => #{}}).
 
--define(PROTOCOL_SPEC, {act, s_data, {rec, "c1", {act, r_error, endP, aft, 1000, {act, s_data, {rvar, "c1"}, aft, 0, {act, s_stop, endP}}}}}).
+-define(PROTOCOL_SPEC, {act, s_data, {rec, "c1", {act, r_error, endP, aft, 1000, {act, s_data, {rvar, "c1"}, aft, 50, {act, s_stop, endP}}}}}).
 
 
 -export([init/1, run/1, run/2, start_link/0, start_link/1, stopping/2]).
@@ -61,6 +61,7 @@ init(Args) ->
             ?VSHOW("finished setting options for monitor.", [], Data);
         _ -> ok
     end,
+    ?SHOW("waiting to received start signal from session (~p)",[SessionID],Data),
     receive
         {SessionID, start} ->
             ?SHOW("received start signal from session.", [], Data),
@@ -98,7 +99,7 @@ main(CoParty, Data) ->
     loop_state2(CoParty, Data1).
 
 loop_state2(CoParty, Data) ->
-    ?SHOW("waiting to recv.", [], Data),
+    ?SHOW("\n\twaiting to recv.", [], Data),
     receive
         {CoParty, error = Label2, Payload2} ->
             Data1 = save_msg(recv, error, Payload2, Data),
@@ -106,15 +107,15 @@ loop_state2(CoParty, Data) ->
             stopping(normal, CoParty, Data1)
         after 1000 ->
                   AwaitPayload5 = nonblocking_payload(fun get_payload5/1, {data, Data}, self(), ?MAX_DATA_PERIOD, Data),
-                  ?VSHOW("waiting for (data) payload to be returned from (~p).", [AwaitPayload5], Data),
+                  ?VSHOW("\n\twaiting for (data) payload to be returned from (~p).", [AwaitPayload5], Data),
                   receive
                       {_AwaitPayload5, ok, {data = Label5, Payload5}} ->
-                          ?VSHOW("(data) payload obtained:\n\t\t{~p, ~p}.", [Label5, Payload5], Data),
+                          ?VSHOW("\n\t(data) payload obtained: {~p, ~p}.", [Label5, Payload5], Data),
                           CoParty ! {self(), data, Payload5},
                           Data1 = save_msg(send, data, Payload5, Data),
                           loop_state2(CoParty, Data1);
                       {AwaitPayload5, ko} ->
-                          ?VSHOW("unsuccessful payload. (probably took too long)", [], Data),
+                          ?VSHOW("\n\tunsuccessful payload. (probably took too long)", [], Data),
                           Payload7 = get_payload7({stop, Data}),
                           CoParty ! {self(), stop, Payload7},
                           Data1 = save_msg(send, stop, Payload7, Data),
