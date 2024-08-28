@@ -14,6 +14,7 @@
           init/1 ]).
         
 -export([ start_link/1 ]).
+-include_lib("stdlib/include/assert.hrl").
 
 -include("toast_app_params.hrl").
 -include("sup_flags.hrl").
@@ -65,23 +66,32 @@ init([H|T], Params) ->
 %% finished parsing both params
 init(finished, Params) ->
   % printout("~p, finished.", [?FUNCTION_NAME]),
-  printout("~p, finished,\n\tparams: ~p.", [?FUNCTION_NAME, Params]),
+  printout("~p, finished,\n\tParams: ~p.\n", [?FUNCTION_NAME, Params]),
 
   ChildOptions = maps:get(child_options, Params),
   SupFlags = maps:get(sup_flags, Params),
   SupFlags1 = maps:put(auto_shutdown, all_significant, SupFlags),
 
-  Roles = maps:get(roles, Params),
-  printout("~p, num_roles: ~p.", [?FUNCTION_NAME, length(Roles)]),
-  printout("~p, roles:\n\t~p.", [?FUNCTION_NAME, Roles]),
 
-  SessionID = ets_get(toast,session_id),
-  printout("~p, session_id: ~p.",[?FUNCTION_NAME, SessionID]),
+  _Roles = maps:get(roles, Params),
+
+  %% add server role
+  ServerName = toast_session,
+  ServerRole = #{module=>toast_server,name=>ServerName, roles=>_Roles},
+
+  Roles = _Roles ++ [ServerRole],
+
+  printout("~p, num_roles: ~p.", [?FUNCTION_NAME, length(Roles)]),
+  printout("~p, \n\troles: ~p.\n", [?FUNCTION_NAME, Roles]),
+
+  % SessionID = ets_get(toast,init_session_id),
+  % printout("~p, init_session_id: ~p.",[?FUNCTION_NAME, SessionID]),
 
   %% create supervisor for each role
   SpecFun = fun(#{module:=ModuleName,name:=RoleName}=Role, AccIn) -> 
       RegID = RoleName,
-      AccIn ++ [child_spec(ModuleName,RegID,ChildOptions,[{session_id,SessionID},{role,Role}])]
+      AccIn ++ [child_spec(ModuleName,RegID,ChildOptions,[{role,Role},{session_name,ServerName}])]
+      % AccIn ++ [child_spec(ModuleName,RegID,ChildOptions,[{init_session_id,SessionID},{role,Role}])]
   end,
 
   ChildSpecs = lists:foldl(SpecFun, [], Roles),

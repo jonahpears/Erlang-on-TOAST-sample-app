@@ -36,76 +36,140 @@
 %% @doc 
 stub_start_link() -> stub_start_link([]).
 
+
+
 %% @doc 
 stub_start_link(Args) when ?MONITORED=:=true ->
   Params = maps:from_list(Args),
-  ?SHOW("Params:\n\t\t\t~p.",[Params],Params),
-
-  %% if ?MONITORED, then either MONITOR_SPEC is map, or params contains 
-  % case maps:size(?MONITOR_SPEC)>0 of 
-  case is_boolean(?MONITOR_SPEC) of 
-    true -> %% if monitor spec not in this file, check in param map
-      ?assert(maps:is_key(monitor_spec,Params)), 
-      MonitorSpec = maps:get(monitor_spec, Params);
-    _ -> MonitorSpec = ?MONITOR_SPEC
-  end,
-
-  Name = maps:get(name, maps:get(role, Params)),
-  MonitorName = list_to_atom("mon_"++atom_to_list(Name)),
-
-  MonitorArgs = maps:to_list(maps:put(role,maps:put(name,MonitorName,maps:get(role,Params)),Params)),
-
+  ?SHOW("\n\t\tParams:\t~p.\n",[Params],Params),
   PID = self(),
 
-  %% spawn monitor within same node 
-  MonitorID = erlang:spawn_link(node(), gen_monitor, start_link, [MonitorArgs++[{fsm,MonitorSpec},{init_sus_id, PID},{sus_id, erlang:spawn_link(?MODULE, init, [Args++[{init_sus_id, PID}]])}]]),
+  %% get name 
+  Name = maps:get(name, maps:get(role, Params), ?MODULE),
+  MonitorName = list_to_atom("mon_"++atom_to_list(Name)),
 
-  ?SHOW("MonitorID: ~p.",[MonitorID],Params),
+  %% update monitor args with new name
+  MonitorArgs = maps:to_list(maps:put(role,maps:put(name,MonitorName,maps:get(role,Params)),Params)),
+
+  %% spawn main stub within same node
+  StubID = erlang:spawn_link(?MODULE, init, [Args++[{init_sus_id, PID}]]),
+  ?SHOW("\n\t\tStarting stub in (~p).\n",[StubID],Params),
+
+  %% get monitor spec
+  MonitorSpec = case is_map(?MONITOR_SPEC) of true -> ?MONITOR_SPEC; _ -> ?assert(is_map_key(monitor_spec,Params)), maps:get(monitor_spec,Params) end,
+
+  %% spawn monitor within same node 
+  MonitorID = erlang:spawn_link(node(), gen_monitor, start_link, [MonitorArgs++[{fsm,MonitorSpec},{init_sus_id, PID},{sus_id, StubID}]]),
+  ?SHOW("\n\t\tStarting monitor in (~p).\n",[MonitorID],Params),
+
+  %% return as monitor
   {ok, MonitorID};
 %%
+
+
+%   %% if ?MONITORED, then either MONITOR_SPEC is map, or params contains 
+%   % case maps:size(?MONITOR_SPEC)>0 of 
+%   case is_boolean(?MONITOR_SPEC) of 
+%     true -> %% if monitor spec not in this file, check in param map
+%       ?assert(maps:is_key(monitor_spec,Params)), 
+%       MonitorSpec = maps:get(monitor_spec, Params);
+%     _ -> MonitorSpec = ?MONITOR_SPEC
+%   end,
+
+%   Name = maps:get(name, maps:get(role, Params)),
+%   MonitorName = list_to_atom("mon_"++atom_to_list(Name)),
+
+%   MonitorArgs = maps:to_list(maps:put(role,maps:put(name,MonitorName,maps:get(role,Params)),Params)),
+
+%   PID = self(),
+
+%   %% spawn monitor within same node 
+%   MonitorID = erlang:spawn_link(node(), gen_monitor, start_link, [MonitorArgs++[{fsm,MonitorSpec},{init_sus_id, PID},{sus_id, erlang:spawn_link(?MODULE, init, [Args++[{init_sus_id, PID}]])}]]),
+
+%   ?SHOW("MonitorID: ~p.",[MonitorID],Params),
+%   {ok, MonitorID};
+% %%
+
+
 
 %% @doc normal unmonitored start_link
 stub_start_link(Args) -> 
   Params = maps:from_list(Args),
-  ?VSHOW("Params:\n\t\t\t~p.",[Args],Params),
+  ?SHOW("\n\tParams:\t~p.\n",[Params],Params),
   InitID = erlang:spawn_link(?MODULE, init, [Args]),
   
   ?VSHOW("ID: ~p.",[InitID],Params),
   {ok, InitID}.
 %%
 
+
+
+
+
+
 %% @doc called after start_link returns
 stub_init(Args) when ?MONITORED=:=true ->
   Params = maps:from_list(Args),
-  ?VSHOW("\n\targs:\n\t\t\t~p.\n",[Args],Params),
+  ?SHOW("\n\tParams:\t~p.\n",[Params],Params),
+
+  ?assert(is_map_key(role,Params)),
+  ?assert(is_map_key(session_name,Params)),
+  ?assert(is_map_key(init_sus_id,Params)),
 
   %% unpack from param map
-  Role = maps:get(role,Params,role_unspecified),
+  #{role:=#{module:=Module,name:=Name}=Role,session_name:=SessionName,init_sus_id:=InitID} = Params,
 
-  InitSessionID = maps:get(session_id,Params,no_session_id_found),
-  ?VSHOW("InitSessionID: ~p.",[InitSessionID],Params),
-  ?assert(is_pid(InitSessionID)),
+  %% wait for session to finish setting up
+  ?SHOW("\n\tWaiting for Session (~p) to finish setting up.\n",[SessionName],Params),
+  receive {Name,SessionName,SessionID} -> 
 
-  Data = maps:put(role,Role,default_stub_data()),
+    %% get pid of server running session
+    ?assert(is_pid(SessionID)=:=whereis(SessionName)),
+    ?assert(is_process_alive(SessionID)),
 
-  %% receive message from monitor
-  SusInitID = maps:get(init_sus_id,Params),
-  ?VSHOW("\n\t\t\twaiting to recv real monitor ID,\n\t\t\t(init_sus_id = ~p)\n\t\t\t(init_session_id = ~p).\n",[SusInitID,InitSessionID],Data),
-  receive 
-    {{monitor_id,MonitorID},{init_sus_id, SusInitID},{init_session_id,InitSessionID},{session_id,SessionID}} ->
-      ?VSHOW("recv'd monitor id: ~p.\n\n\n",[MonitorID],Data),
-      Data1 = maps:put(session_id,SessionID,Data),
-      Data2 = maps:put(coparty_id,MonitorID,Data1),
-      {ok, Data2}
+    %% exchange with server current ID
+    SessionID ! {{name,Name},{module,Module},{init_id,InitID},{pid,self()}},
+    % receive {}
 
-after 10000 -> io:format("no message!"), timer:sleep(5000),{stop, Data}
+    ok
+
   end;
+
+
+
+%   %% unpack from param map
+% ?assert(is_map_key(role,Params)),
+% Role = maps:get(role,Params),
+
+
+%   InitSessionID = maps:get(session_id,Params,no_session_id_found),
+%   ?VSHOW("InitSessionID: ~p.",[InitSessionID],Params),
+%   ?assert(is_pid(InitSessionID)),
+
+%   Data = maps:put(role,Role,default_stub_data()),
+
+%   %% receive message from monitor
+%   SusInitID = maps:get(init_sus_id,Params),
+%   ?VSHOW("\n\t\t\twaiting to recv real monitor ID,\n\t\t\t(init_sus_id = ~p)\n\t\t\t(init_session_id = ~p).\n",[SusInitID,InitSessionID],Data),
+%   receive 
+%     {{monitor_id,MonitorID},{init_sus_id, SusInitID},{init_session_id,InitSessionID},{session_id,SessionID}} ->
+%       ?VSHOW("recv'd monitor id: ~p.\n\n\n",[MonitorID],Data),
+%       Data1 = maps:put(session_id,SessionID,Data),
+%       Data2 = maps:put(coparty_id,MonitorID,Data1),
+%       {ok, Data2}
+
+% after 10000 -> io:format("no message!"), timer:sleep(5000),{stop, Data}
+%   end;
 %%
+
+
+
+
 
 %% @doc init function for unmonitored process.
 stub_init(Args) ->
   Params = maps:from_list(Args),
-  ?VSHOW("Params:\n\t\t\t~p.",[Params],Params),
+  ?SHOW("\n\t\tParams:\t~p.\n",[Params],Params),
   PID = self(),
 
   %% unpack from param map
@@ -137,8 +201,15 @@ stub_init(Args) ->
   end.
 %%
 
+
+
+
 %% @docs default map for stubs
 default_stub_data() -> #{timers=>maps:new(),msgs=>maps:new(),logs=>maps:new(),coparty_id=>undefined, options => #{presistent_nonblocking_payload_workers=>true, output_logs_to_file=>true, logs_written_to_file=>false}}.
+
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%
 %%% timer management

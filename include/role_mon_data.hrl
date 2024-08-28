@@ -28,7 +28,9 @@ data() -> data([]).
 data(List) -> list_to_map_builder(List, default_data()).
 
 default_data() ->
-  #{ session_id => undefined,
+  #{ session_name => undefined,
+    %  init_session_id => undefined,
+    %  session_id => undefined,
      init_sus_id => undefined,
      sus_id => undefined,
      role => #{ name => undefined },

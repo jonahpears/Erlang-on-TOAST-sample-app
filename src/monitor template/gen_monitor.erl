@@ -94,13 +94,14 @@ start_link(_Data) when is_map(_Data) ->
   Name = maps:get(name,maps:get(role,Data)),
 
   %% start in same node
-  Ret = gen_statem:start_link({local, Name}, gen_monitor, [Data], []),
+  {ok, PID} = gen_statem:start_link({local, Name}, gen_monitor, [Data], []),
+  % Ret = gen_statem:start_link({local, Name}, gen_monitor, [Data], []),
   % ?VSHOW("Ret: ~p.",[Ret],Data),
   
-  case Ret of
-    {ok,_PID} -> PID = _PID;
-    _ -> PID = self()
-  end,
+  % PID = case Ret of
+  %   {ok,_PID} -> _PID;
+  %   _ -> self()
+  % end,
 
   ?SHOW("starting as: ~p.",[PID],Data),
   {ok, PID}.
@@ -187,8 +188,8 @@ handle_event(enter, _OldState, setup_state=_State, #{coparty_id:=undefined}=Data
 
 
 %% @doc timeout state used when setting up to allow monitor to finish setting up with the session and for the monitored process to set options.
-handle_event(state_timeout, wait_to_finish, setup_state=_State, #{coparty_id:=undefined,sus_id:=SusID,init_sus_id:=SusInitID,session_id:=InitSessionID,role:=Role,fsm:=#{init:=Init},options:=_Options}=Data) ->
-  ?VSHOW("beginning setup.",[],Data),
+handle_event(state_timeout, wait_to_finish, setup_state=_State, #{coparty_id:=undefined,sus_id:=SusID,init_sus_id:=SusInitID,init_session_id:=InitSessionID,role:=Role,fsm:=#{init:=Init},options:=_Options}=Data) ->
+  ?VSHOW("beginning setup,\n\tData: ~p.\n",[Data],Data),
 
   ?assert(is_pid(InitSessionID)),
   ?VSHOW("InitSessionID: ~p.",[InitSessionID],Data),

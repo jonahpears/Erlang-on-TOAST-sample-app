@@ -46,9 +46,9 @@ start_link(Args) -> stub_start_link(Args).
 %% If this process is set to be monitored (i.e., ?MONITORED) then, in the space indicated below setup options for the monitor may be specified, before the session actually commences.
 %% Processes wait for a signal from the session coordinator (SessionID) before beginning.
 init(Args) ->
-    printout("args:\n\t\t~p.", [Args]),
+    % ?SHOW("\n\targs: ~p.\n", [Args], Args),
     {ok, Data} = stub_init(Args),
-    printout("data:\n\t\t~p.", [Data]),
+    ?SHOW("\n\tdata: ~p.\n", [Data], Data),
     CoParty = maps:get(coparty_id, Data),
     SessionID = maps:get(session_id, Data),
     case ?MONITORED of
