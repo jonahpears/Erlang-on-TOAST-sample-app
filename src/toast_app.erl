@@ -45,6 +45,7 @@ start(Type, Args) when is_list(Args) ->
   printout("~p, args:\n\t~p.", [?FUNCTION_NAME, Args]),
 
   %% create ets for tpri app
+  % ets:new(toast, [set,named_table,public]),
   ets:new(toast, [set,named_table,protected]),
   ets:insert(toast, {session_id, self()}),
   printout("~p, created ets, added self()=~p.", [?FUNCTION_NAME, self()]),
@@ -83,6 +84,8 @@ start(Type, Args) when is_list(Args) ->
 
   printout("~p, ets:\n\t~p.\n", [?FUNCTION_NAME, ets_string(toast)]),
 
+  run(),
+
   {ok, SupID}.
 
 stop(_State) -> ok.
@@ -92,7 +95,7 @@ ets_setup(0, Rs) -> printout("~p, finished, roles:\n\t~p.",[?FUNCTION_NAME,Rs]),
 ets_setup(Num, Rs) when Num>0 -> 
   receive 
     {RoleID, role, #{module:=_RoleModule,name:=_RoleName}=R} ->
-      printout("~p, received: ~p.",[?FUNCTION_NAME,R]),
+      printout("~p,\n\t\t\treceived from (~p): ~p.\n",[?FUNCTION_NAME,RoleID,R]),
       ets:insert(toast, {RoleID, R}),
       ets_setup(Num-1, Rs++[RoleID])
     % _Else -> printout("~p, else:\n\t~p.",[?FUNCTION_NAME,_Else]),
@@ -146,7 +149,8 @@ run() ->
   % exit(SupID,normal),
   % timer:sleep(100),
 
-  stop(?MODULE).
+  % stop(?MODULE).
+  ok.
 %%
 
 

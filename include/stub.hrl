@@ -58,7 +58,7 @@ stub_start_link(Args) when ?MONITORED=:=true ->
   PID = self(),
 
   %% spawn monitor within same node 
-  MonitorID = erlang:spawn_link(node(), gen_monitor, start_link, [MonitorArgs++[{fsm,MonitorSpec},{sus_init_id, PID},{sus_id, erlang:spawn_link(?MODULE, init, [Args++[{sus_init_id, PID}]])}]]),
+  MonitorID = erlang:spawn_link(node(), gen_monitor, start_link, [MonitorArgs++[{fsm,MonitorSpec},{init_sus_id, PID},{sus_id, erlang:spawn_link(?MODULE, init, [Args++[{init_sus_id, PID}]])}]]),
 
   ?SHOW("MonitorID: ~p.",[MonitorID],Params),
   {ok, MonitorID};
@@ -77,7 +77,7 @@ stub_start_link(Args) ->
 %% @doc called after start_link returns
 stub_init(Args) when ?MONITORED=:=true ->
   Params = maps:from_list(Args),
-  ?VSHOW("args:\n\t\t\t~p.",[Args],Params),
+  ?VSHOW("\n\targs:\n\t\t\t~p.\n",[Args],Params),
 
   %% unpack from param map
   Role = maps:get(role,Params,role_unspecified),
@@ -89,14 +89,16 @@ stub_init(Args) when ?MONITORED=:=true ->
   Data = maps:put(role,Role,default_stub_data()),
 
   %% receive message from monitor
-  SusInitID = maps:get(sus_init_id,Params),
-  ?VSHOW("waiting to recv real monitor ID.",[],Data),
+  SusInitID = maps:get(init_sus_id,Params),
+  ?VSHOW("\n\t\t\twaiting to recv real monitor ID,\n\t\t\t(init_sus_id = ~p)\n\t\t\t(init_session_id = ~p).\n",[SusInitID,InitSessionID],Data),
   receive 
-    {{MonitorID, is_monitor},{SusInitID, proof_init_id},{in_session,InitSessionID},{session_id,SessionID}} ->
+    {{monitor_id,MonitorID},{init_sus_id, SusInitID},{init_session_id,InitSessionID},{session_id,SessionID}} ->
+      ?VSHOW("recv'd monitor id: ~p.\n\n\n",[MonitorID],Data),
       Data1 = maps:put(session_id,SessionID,Data),
       Data2 = maps:put(coparty_id,MonitorID,Data1),
-      ?VSHOW("recv'd monitor id: ~p.",[MonitorID],Data2),
       {ok, Data2}
+
+after 10000 -> io:format("no message!"), timer:sleep(5000),{stop, Data}
   end;
 %%
 
@@ -119,7 +121,7 @@ stub_init(Args) ->
   Data1 = maps:put(role,maps:get(role,Params),Data),
 
   % %% wait to receive coparty id from session
-  ?VSHOW("waiting to receive CoPartyID from session.",[],Data1),
+  ?VSHOW("\n\t\t\twaiting to receive CoPartyID from session.\n",[],Data1),
   receive {InitSessionID, {session_id,SessionID}, {coparty_id, CoPartyID}} ->
     ?VSHOW("received CoPartyID (~p) from SessionID (~p),\n\t\t\tnow waiting for init message from CoParty.",[CoPartyID, SessionID],Data1),
     Data2 = maps:put(coparty_id,CoPartyID,Data1),
@@ -127,7 +129,7 @@ stub_init(Args) ->
     %% exchange init message
     CoPartyID ! {PID, init},
     receive {CoPartyID, init} ->
-      ?VSHOW("now telling session (~p) ready,\n\t\t\tand waiting for signal to start.",[SessionID],Data3),
+      ?VSHOW("\n\t\t\tnow telling session (~p) ready,\n\t\t\tand waiting for signal to start.\n",[SessionID],Data3),
       %% tell session ready to proceed
       SessionID ! {self(), ready},
       {ok, Data3}

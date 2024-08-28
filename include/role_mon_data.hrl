@@ -8,12 +8,13 @@
                                     {default_queued_action,0},
                                     {default_action_meta,0},
                                     {default_options,0},
-                                    {default_options,1},
-                                    {reset_return_state,1} ]}).
+                                    {default_options,1}
+                                    % {reset_return_state,1} 
+                                    ]}).
 
-reset_return_state(#{queue:=#{state_to_return_to:=To}=Queue}=Data) ->
-  ?VSHOW("resetting from (~p) to undefined.",[To],Data),
-  maps:put(queue,maps:put(state_to_return_to,undefined,Queue),Data).
+% reset_return_state(#{queue:=#{state_to_return_to:=To}=Queue}=Data) ->
+%   ?VSHOW("resetting from (~p) to undefined.",[To],Data),
+%   maps:put(queue,maps:put(state_to_return_to,undefined,Queue),Data).
 
 
 
@@ -28,10 +29,10 @@ data(List) -> list_to_map_builder(List, default_data()).
 
 default_data() ->
   #{ session_id => undefined,
-     sus_init_id => undefined,
+     init_sus_id => undefined,
      sus_id => undefined,
      role => #{ name => undefined },
-     state => undefined,
+     state => setup_state,
      prev_state => undefined,
      enter_flags => #{},
     %  name => undefined, 
@@ -45,11 +46,11 @@ default_data() ->
                enter_flags => #{}, %% signify which things have been done on enter current state, reset each new state
                map => #{} }, %% outgoing edges from states
      trace => [], %% list of state-names reached
-     msgs => #{}, %% received messages (maps labels to lists of payloads)
-     queue => #{ on => [], 
-                 off => [], 
-                 check_recvs => [],
-                 state_to_return_to => undefined },
+    %  msgs => #{}, %% received messages (maps labels to lists of payloads)
+    %  queue => #{ on => [], 
+    %              off => [], 
+    %              check_recvs => [],
+    %              state_to_return_to => undefined },
      options => default_options() }.
 
 
@@ -58,7 +59,8 @@ default_options() ->
      presets => [ validation, enforcement ],
      selected_preset => validation,
      enforcement_configuration => default_options(enforcement_configuration),
-     grace_period => #{ enabled => true, duration => 1, count => 0 }
+     grace_period => #{ send => #{ enabled => true, num => 1, count => 0, immunity_state => undefined },
+                        recv => #{ enabled => true, num => 1, count => 0, immunity_state => undefined } }
     %  delayable_sends => default_options(delayable_sends),
     %  queue => default_options(queue),
     %  forward_receptions => default_options(forward_receptions),

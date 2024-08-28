@@ -84,12 +84,12 @@ start_link(List) when is_list(List) ->
 
 %% @doc starts init in same node.
 start_link(_Data) when is_map(_Data) -> 
-  ?SHOW("",[],_Data),
+  % ?SHOW("",[],_Data),
 
   %% merge with default data
   Data = nested_map_merger(default_data(), _Data),
 
-  ?VSHOW("\n\t\t\tdata:\t~p.",[Data],Data),
+  % ?VSHOW("\n\t\tdata:\t~p.",[Data],Data),
 
   Name = maps:get(name,maps:get(role,Data)),
 
@@ -109,7 +109,7 @@ start_link(_Data) when is_map(_Data) ->
 %% @doc called during start_link, and the monitor will begin from here (with fresh pid).
 init([Data]) when is_map(Data) -> 
   ?SHOW("",[],Data),
-  ?VSHOW("\n\t\t\tdata:\t~p.",[Data],Data),
+  ?VSHOW("\n\tdata:\t~p.\n",[Data],Data),
   %% enter setup state
   {ok, setup_state, Data}.
 %%
@@ -127,8 +127,8 @@ stop() -> gen_statem:stop(?MODULE).
 %% will dump contents of Data to output if options specify.
 terminate(Reason, emergency_signal=_State, #{data:=#{options:=#{printout:=#{termination:=Dump}}}=Data}=_StopData) ->
   case Dump of 
-    true -> ?VSHOW("\n\t\t\treason:\t~p,\n\t\t\tdata:\t~p.",[Reason,Data],Data);
-    _ -> ?VSHOW("\n\t\t\treason:\t~p.",[Reason],Data)
+    true -> ?VSHOW("\n\treason:\t~p,\n\tdata:\t~p.\n",[Reason,Data],Data);
+    _ -> ?VSHOW("\n\treason:\t~p.\n",[Reason],Data)
   end;
 %%
   
@@ -137,15 +137,15 @@ terminate(Reason, emergency_signal=_State, #{data:=#{options:=#{printout:=#{term
 %% will dump contents of Data to output if options specify.
 terminate(Reason, _State, #{data:=#{options:=#{printout:=#{termination:=Dump}}}=Data}=_StopData) ->
   case Dump of 
-    true -> ?VSHOW("\n\t\t\treason:\t~p,\n\t\t\tdata:\t~p.",[Reason,Data],Data);
-    _ -> ?VSHOW("\n\t\t\treason:\t~p.",[Reason],Data)
+    true -> ?VSHOW("\n\treason:\t~p,\n\tdata:\t~p.\n",[Reason,Data],Data);
+    _ -> ?VSHOW("\n\treason:\t~p.\n",[Reason],Data)
   end;
 %%
 
 %% @doc catch-all termination
 %% will dump contents of Data to output if options specify.
 terminate(Reason, _State, StopData) ->
-  ?SHOW("unhandled termination,\n\t\t\treason:\t~p,\n\t\t\tstate:\t~p,\n\t\t\tstop data:\t~p.\n",[Reason,_State,StopData],maps:get(data,StopData,default_data())).
+  ?SHOW("unhandled termination,\n\treason:\t~p,\n\tstate:\t~p,\n\tstop data:\t~p.\n",[Reason,_State,StopData],maps:get(data,StopData,default_data())).
 %%
   
 
@@ -180,13 +180,14 @@ when State=/=DataState ->
 %% catch before start to allow monitor to finish setting up with the session and for the monitored process to set options.
 %% (immediately silently-timeouts to do this.)
 handle_event(enter, _OldState, setup_state=_State, #{coparty_id:=undefined}=Data) -> 
-  Data1 = reset_return_state(Data),
-  {keep_state, Data1, [{state_timeout, 0, wait_to_finish}]};
+  % Data1 = reset_return_state(Data),
+  % {keep_state, Data1, [{state_timeout, 0, wait_to_finish}]};
+  {keep_state_and_data, [{state_timeout, 0, wait_to_finish}]};
 %%
 
 
 %% @doc timeout state used when setting up to allow monitor to finish setting up with the session and for the monitored process to set options.
-handle_event(state_timeout, wait_to_finish, setup_state=_State, #{coparty_id:=undefined,sus_id:=SusID,sus_init_id:=SusInitID,session_id:=InitSessionID,role:=Role,fsm:=#{init:=Init},options:=_Options}=Data) ->
+handle_event(state_timeout, wait_to_finish, setup_state=_State, #{coparty_id:=undefined,sus_id:=SusID,init_sus_id:=SusInitID,session_id:=InitSessionID,role:=Role,fsm:=#{init:=Init},options:=_Options}=Data) ->
   ?VSHOW("beginning setup.",[],Data),
 
   ?assert(is_pid(InitSessionID)),
@@ -198,27 +199,27 @@ handle_event(state_timeout, wait_to_finish, setup_state=_State, #{coparty_id:=un
   ?VSHOW("sent to session:\n\t\t\t{~p, role, ~p}.\n",[self(),Role],Data),
 
   %% wait to receive coparty id from session
-  ?VSHOW("waiting to receive CoPartyID from session.",[],Data),
+  ?VSHOW("\n\t\t\twaiting to receive CoPartyID from session.\n",[],Data),
   receive {InitSessionID, {session_id,SessionID}, {coparty_id, CoPartyID}} ->
-    ?VSHOW("received CoPartyID (~p) from SessionID (~p),\n\t\t\tnow waiting for init message from CoParty.\n",[CoPartyID, SessionID],Data),
+    ?VSHOW("\n\treceived CoPartyID (~p) from SessionID (~p),\n\t\t\tnow waiting for init message from CoParty.\n",[CoPartyID, SessionID],Data),
     Data1 = maps:put(coparty_id,CoPartyID,Data),
     Data2 = maps:put(session_id,SessionID,Data1),
 
     %% pass back to sus the monitor id (they have the outdated one from start_link only)
     %% we send all this information to ensure credibility of monitor to sus
-    SusID ! {{self(), is_monitor}, {SusInitID, proof_init_id}, {in_session, InitSessionID}, {session_id,SessionID}},
-    ?VSHOW("sent to sus:\n\t\t\t~p.\n",[{{self(),'is_monitor'},{SusInitID,'proof_init_id'},{in_session,InitSessionID},{session_id,SessionID}}],Data2),
+    SusID ! {{monitor_id,self()}, {init_sus_id, SusInitID}, {init_session_id, InitSessionID}, {session_id,SessionID}},
+    ?VSHOW("sent to sus (~p):\n\t\t\t~p.\n",[SusID,{{'monitor_id',self()},{'init_sus_id',SusInitID},{init_session_id,InitSessionID},{session_id,SessionID}}],Data2),
 
     %% prepare to receive setup options from sus
     Processed = process_setup_params(Data2),
-    ?VSHOW("processed return:\n\t\t\t~p.\n",[Processed],Data2),
+    ?VSHOW("\n\tprocessed return:\n\t~p.\n",[Processed],Data2),
     {ok, Data3} = Processed,
-    ?VSHOW("finished setup param phase,\n\t\t\tData:\t~p.\n",[Data3],Data3),
+    ?VSHOW("\n\tfinished setup param phase,\n\t\t\tData:\t~p.\n",[Data3],Data3),
 
     %% exchange init message
     CoPartyID ! {self(), init},
     receive {CoPartyID, init} ->
-      ?VSHOW("now telling session (~p) ready,\n\t\t\tand waiting for signal to start.\n",[SessionID],Data3),
+      ?VSHOW("\n\tnow telling session (~p) ready,\n\t\t\tand waiting for signal to start.\n",[SessionID],Data3),
       %% tell session ready to proceed
       SessionID ! {self(), ready},
       
@@ -320,7 +321,7 @@ handle_event(state_timeout, goto_stop, emergency_signal=_State, StopData) ->
 %% @doc postpone any receptions whilst error
 handle_event(info, _Msg, _State, #{reason:=_Reason,data:=Data}=StopData)
 when is_map(Data) ->
-  ?VSHOW("(postponed reception)",[],Data),
+  ?VSHOW("(stopping, postponed reception)",[],Data),
   {keep_state_and_data, [postpone]};
 %%
 
@@ -503,7 +504,7 @@ handle_event(enter, _OldState, _State, Data) ->
 
 %% @doc forward/send messages from monitored process to co-party.
 %% this even handles sending messages prescribed to currently occur.
-handle_event(info, {SusID, Label, Payload}, State, #{coparty_id:=CoPartyID,sus_id:=SusID,fsm:=#{map:=Map},trace:=Trace}=Data) 
+handle_event(info, {SusID, Label, Payload}, State, #{coparty_id:=CoPartyID,sus_id:=SusID,fsm:=#{map:=Map},trace:=Trace,options:=#{grace_period:=#{send:=SendGrace}=GracePeriod}=Options}=Data) 
 when is_map_key(State, Map) and is_atom(map_get(Label, map_get(send, map_get(State, Map)))) ->  
   %% send message to co-party
   CoPartyID ! {self(), Label, Payload},
@@ -511,18 +512,61 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(send, map_get(Sta
   #{State:=#{send:=#{Label:=NextState}}} = Map,
   %% update trace
   Trace1 = [{NextState,{send,{Label,Payload}}}] ++ Trace,
+  %% update options
+  Options1 = maps:put(grace_period,maps:put(send,maps:put(count,0,SendGrace),GracePeriod),Options),
+  %% update data
   Data1 = maps:put(trace,Trace1,Data),
-  ?SHOW("send (~p: ~p) -> ~p.",[Label,Payload,NextState],Data1),
-  {next_state, NextState, Data1};
+  Data2 = maps:put(options,Options1,Data1),
+  ?SHOW("send (~p: ~p) -> ~p.",[Label,Payload,NextState],Data2),
+  {next_state, NextState, Data2};
 %%  
 
 %% @doc monitored process attempted to send a message that is not (currently, possibly) prescribed by the protocol.
 %% this event allows such an attempt to be postponed until the next state.
-handle_event(info, {SusID, Label, _Payload}, _State, #{coparty_id:=_CoPartyID,sus_id:=SusID}=Data) ->
-  ?SHOW("warning, sending (~p) is not prescribed at this time, postponing.",[Label],Data),
-  %% logging this message has been postponed
-  %% TODO
-  {keep_state, Data, [postpone]};
+handle_event(info, {SusID, Label, _Payload}=Msg, State, #{coparty_id:=_CoPartyID,sus_id:=SusID,options:=#{selected_preset:=SelectedPreset,grace_period:=#{send:=#{enabled:=GracePeriodEnabled,num:=MaxNum,count:=Count,immunity_state:=ImmunityState}=SendGrace}=GracePeriod}=Options}=Data) ->
+
+  case GracePeriodEnabled of 
+
+    %% if allowed grace period
+    true ->
+
+      case ((MaxNum-Count)>0) or State=:=ImmunityState of 
+
+        %% if within grace, postpone
+        true ->
+          ?SHOW("\n\t\t\ttried to send (~p) early, postponed (grace period).\n",[Msg],Data),
+          NewCount = case ImmunityState of true -> Count; _-> Count+1 end,
+          Data1 = maps:put(options,maps:put(grace_period,maps:put(send,maps:put(count,NewCount,SendGrace), GracePeriod),Options),Data),
+          {keep_state, Data1, [postpone]};
+
+        %% expended grace
+        _ ->
+          ?SHOW("protocol violation:\n\t\t\ttried to send (~p) too early,\n\t\t\t(not configured to enforce protocol,\n\t\t\t and grace period (~p/~p) expended).\n",[Msg,MaxNum,Count],Data),
+          StopData = stop_data([{reason, protocol_violation_send_wrong_time_expended_grace_period}, {data, Data}]),
+          ?VSHOW("after violation, stopping,\n\n\tStopData:\t~p.\n",[StopData],Data),
+          {next_state, stop_state, StopData}
+
+      end;
+
+    %% no grace given
+    _ ->
+      case SelectedPreset of 
+
+        %% if enforcement, then postpone
+        enforcement -> 
+          ?SHOW("\n\t\t\ttried to send (~p) at wrong time, postponed (enforcement).\n",[Msg],Data),
+          {keep_state_and_data, [postpone]};
+
+        %% protocol violation
+        _ ->
+          ?SHOW("protocol violation:\n\t\t\ttried to send (~p) at wrong time,\n\t\t\t(not configured to enforce protocol).\n",[Msg],Data),
+          StopData = stop_data([{reason, protocol_violation_send_wrong_time}, {data, Data}]),
+          ?VSHOW("after violation, stopping,\n\n\tStopData:\t~p.\n",[StopData],Data),
+          {next_state, stop_state, StopData}
+
+      end
+
+  end;
 %%
 
 
@@ -826,7 +870,7 @@ handle_event(info, {SusID, Label, _Payload}, _State, #{coparty_id:=_CoPartyID,su
 %% % % % % % %
 
 %% @doc receive from correct states
-handle_event(info, {CoPartyID, Label, Payload}, State, #{coparty_id:=CoPartyID,sus_id:=SusID,fsm:=#{map:=Map},trace:=Trace,options:=Options}=Data) 
+handle_event(info, {CoPartyID, Label, Payload}, State, #{coparty_id:=CoPartyID,sus_id:=SusID,fsm:=#{map:=Map},trace:=Trace,options:=#{grace_period:=#{recv:=RecvGrace}=GracePeriod}=Options}=Data) 
 when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(State, Map)))) ->  
   ?VSHOW("received (~p), forwarding to: ~p.",[Label,SusID],Data),
   SusID ! {self(), Label, Payload},
@@ -835,7 +879,7 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(Sta
   %% update trace
   Trace1 = [{NextState,{recv,Label,Payload}}] ++ Trace,
   %% update options
-  Options1 = maps:put(grace_period,maps:put(count,0,maps:get(grace_period,Options,#{})),Options),
+  Options1 = maps:put(grace_period,maps:put(recv,maps:put(count,0,RecvGrace),GracePeriod),Options),
   %% update data
   Data1 = Data#{trace=>Trace1,options=>Options1},
   ?SHOW("recv (~p) -> ~p.",[Label,NextState],Data1),
@@ -843,45 +887,48 @@ when is_map_key(State, Map) and is_atom(map_get(Label, map_get(recv, map_get(Sta
 %%
 
 %% @doc received message at wrong state AND configured as enforcement monitor
-handle_event(info, {_CoPartyID, _Label, _Payload}=Msg, State, #{coparty_id:=CoPartyID,options:=#{selected_preset:=SelectedPreset,grace_period:=#{enabled:=GracePeriodEnabled,duration:=GraceDuration,count:=GraceCount}=GracePeriod}=Options}=Data)
+handle_event(info, {_CoPartyID, _Label, _Payload}=Msg, State, #{coparty_id:=CoPartyID,options:=#{selected_preset:=SelectedPreset,grace_period:=#{recv:=#{enabled:=GracePeriodEnabled,num:=MaxNum,count:=Count,immunity_state:=ImmunityState}=RecvGrace}=GracePeriod}=Options}=Data)
 when _CoPartyID=:=CoPartyID ->
-  case SelectedPreset of 
 
-    %% if preset is enforcement, then allowed to postpone 
-    enforcement -> 
-      ?VSHOW("received (~p) early, postponed.",[Msg],Data),
-      {keep_state_and_data, [postpone]};
+  case GracePeriodEnabled of 
 
-    %% otherwise, this is not allowed. 
-    _ ->
+    %% if allowed grace period
+    true ->
 
-      case GracePeriodEnabled of 
+      case ((MaxNum-Count)>0) or State=:=ImmunityState of %% ? use '>=' over '>' to stop it from triggering immediately at the next state
 
-        %% but, if grace period enabled, then check if still able to postpone
-        %% (grace period stops race conditions)
-        true -> 
-          case (GraceDuration-GraceCount)>0 of
+        %% if within grace, postpone
+        true ->
+          ?SHOW("\n\t\t\treceived (~p) early, postponed (grace period).",[Msg],Data),
+          NewCount = case ImmunityState of true -> Count; _-> Count+1 end,
+          Data1 = maps:put(options,maps:put(grace_period,maps:put(recv,maps:put(count,NewCount,RecvGrace), GracePeriod),Options),Data),
+          {keep_state, Data1, [postpone]};
 
-            %% grace period still active, postpone
-            true ->
-              ?VSHOW("received (~p) early, postponed.",[Msg],Data),
-              Data1 = maps:put(options,maps:put(grace_period,maps:put(count,GraceCount+1,GracePeriod),Options),Data),
-              {keep_state, Data1, [postpone]};
-
-            %% grace period has been expended
-            _ ->
-              ?VSHOW("protocol violation:\n\t\t\treceived (~p) too early,\n\t\t\t(not configured to enforce protocol,\n\t\t\t and grace period (~p) expended).\n",[Msg,GraceDuration],Data),
-              StopData = stop_data([{reason, protocol_violation_reception_expended_grace_period}, {data, Data}]),
-              ?VSHOW("after violation, stopping,\n\n\tStopData:\t~p.\n",[StopData],Data),
-              {next_state, stop_state, StopData}
-          end;
-
-        %% exit abnormally
+        %% expended grace
         _ ->
-          ?VSHOW("protocol violation:\n\t\t\treceived (~p) too early,\n\t\t\t(not configured to enforce protocol).\n",[Msg],Data),
+          ?SHOW("protocol violation:\n\t\t\treceived (~p) too early,\n\t\t\t(not configured to enforce protocol,\n\t\t\t and grace period (~p/~p) expended).\n",[Msg,MaxNum,Count],Data),
+          StopData = stop_data([{reason, protocol_violation_reception_expended_grace_period}, {data, Data}]),
+          ?VSHOW("after violation, stopping,\n\n\tStopData:\t~p.\n",[StopData],Data),
+          {next_state, stop_state, StopData}
+
+      end;
+
+    %% no grace given
+    _ ->
+      case SelectedPreset of 
+    
+        %% if enforcement, then postpone
+        enforcement -> 
+          ?SHOW("\n\t\t\treceived (~p) early, postponed (enforcement).",[Msg],Data),
+          {keep_state_and_data, [postpone]};
+
+        %% protocol violation
+        _ ->
+          ?SHOW("protocol violation:\n\t\t\treceived (~p) too early,\n\t\t\t(not configured to enforce protocol).\n",[Msg],Data),
           StopData = stop_data([{reason, protocol_violation_too_early_reception}, {data, Data}]),
           ?VSHOW("after violation, stopping,\n\n\tStopData:\t~p.\n",[StopData],Data),
           {next_state, stop_state, StopData}
+
       end
 
   end;
@@ -897,7 +944,6 @@ when _CoPartyID=:=CoPartyID ->
 %% during processing
 handle_event(state_timeout, NextState, State, Data) 
 when is_map(Data) and NextState=:=State ->
-  % ?VSHOW("state_timeout (during processing), (~p) -> (~p),\n\t\t\tData:\t~p.\n",[State,NextState,Data],Data),
   ?VSHOW("state_timeout (during processing),\n\t\t\t(~p) -> (~p),\n\t\t\ttrace:\t~p.\n",[State,NextState,maps:get(trace,Data,trace_not_found)],Data),
   {next_state, NextState, Data};
 %%
@@ -905,7 +951,6 @@ when is_map(Data) and NextState=:=State ->
 %% mixed-choice
 handle_event(state_timeout, NextState, State, Data) 
 when is_map(Data) ->
-  % ?VSHOW("state_timeout (mixed-choice), (~p) -> (~p),\n\t\t\ttrace:\t~p.\n",[State,NextState,Data],Data),
   ?VSHOW("state_timeout (mixed-choice),\n\t\t\t(~p) -> (~p),\n\t\t\ttrace:\t~p.\n",[State,NextState,maps:get(trace,Data,trace_not_found)],Data),
   {next_state, NextState, Data};
 %%
@@ -1007,7 +1052,7 @@ process_setup_params(#{sus_id:=SusID,options:=Options}=Data) ->
       Options1 = maps:put(OptionKey, NewOption, Options),
       %% update data with new options
       Data1 = maps:put(options,Options1,Data),
-      ?VSHOW("updated (~p)...\n\t\t\tfrom:\t~p,\n\t\t\tto:\t~p.\n",[OptionKey,CurrentOption,NewOption],Data1),
+      ?VSHOW("updated (~p)...\n\tfrom:\t~p,\n\tto:\t~p.\n",[OptionKey,CurrentOption,NewOption],Data1),
       %% repeat until ready signal
       process_setup_params(Data1)
   end.
