@@ -6,7 +6,7 @@
 
 -define(MAX_DATA_PERIOD, 1000).
 
--define(MONITORED, false).
+-define(MONITORED, true).
 
 -define(SHOW_MONITORED, case ?MONITORED of true -> "(m) "; _ -> "" end).
 

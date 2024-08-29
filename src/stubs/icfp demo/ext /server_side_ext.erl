@@ -2,9 +2,9 @@
 
 -file("server_side_ext", 1).
 
--define(ERROR_DATA, []).
+-define(ERROR_DATA, [4]).
 
--define(MONITORED, false).
+-define(MONITORED, true).
 
 -define(SHOW_MONITORED, case ?MONITORED of true -> "(m) "; _ -> "" end).
 
@@ -109,7 +109,6 @@ loop_state2(CoParty, Data) ->
                 ?SHOW("processor (~p) found error!\n\t\tin: ~p.",[_AwaitPayload2,Payload2], Data),
                 CoParty ! {self(), error, Payload2},
                 Data1 = save_msg(send, error, Payload2, Data),
-                % error(unspecified_error),
                 stopping(error_in_processing, CoParty, Data1);
               %% if not error, then ignore
               _ -> no_error_body(CoParty,Data)
