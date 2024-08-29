@@ -71,7 +71,7 @@ init(Args) ->
 %% @doc Adds default empty list for Data.
 %% @see run/2.
 run(CoParty) ->
-    Data = #{coparty_id => CoParty, timers => #{}, msgs => #{}, logs => #{}, options => #{presistent_nonblocking_payload_workers=>false}},
+    Data = default_stub_data(),
     ?VSHOW("using default Data.", [], Data),
     run(CoParty, Data).
 
@@ -80,9 +80,11 @@ run(CoParty) ->
 %% @param CoParty is the process ID of the other party in this binary session.
 %% @param Data is a map that accumulates data as the program runs, and is used by a lot of functions in `stub.hrl`.
 %% @see stub.hrl for helper functions and more.
-run(CoParty, Data) ->
-    ?DO_SHOW("running...\nData:\t~p.\n", [Data], Data),
-    main(CoParty, Data).
+run(CoParty, #{options:=Options}=Data) ->
+    %% stop workers from being persistent
+    Data1 = maps:put(options,maps:put(presistent_nonblocking_payload_workers,false,Options),Data),
+    ?DO_SHOW("running...\nData:\t~p.\n", [Data1], Data1),
+    main(CoParty, Data1).
 
 %%% @doc the main loop of the stub implementation.
 %%% CoParty is the process ID corresponding to either:
@@ -174,4 +176,12 @@ get_payload1({Args, Data}) ->
   %% check how many other data have been sent
   Value = get_msgs(send,data,Data),
   
-  case Value of undefined -> 1; _ -> length(Value)+1 end.
+  case Value of 
+    undefined -> 1;
+    _ -> 
+      Len = length(Value),
+      case Len<?DATA_NUM of
+        true -> Len+1;
+        _ -> timer:sleep(1200), none
+      end
+  end.

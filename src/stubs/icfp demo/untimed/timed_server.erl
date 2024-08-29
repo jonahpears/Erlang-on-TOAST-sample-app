@@ -1,10 +1,12 @@
--module(untimed_server).
+-module(timed_server).
 
--file("untimed_server", 1).
+-file("timer_server", 1).
+
+-define(ERROR_DATA, [4]).
 
 -define(MONITORED, true).
 
--define(SHOW_MONITORED, case ?MONITORED of true -> "(monitored) "; _ -> "" end).
+-define(SHOW_MONITORED, case ?MONITORED of true -> "(m) "; _ -> "" end).
 
 -define(SHOW_ENABLED, true).
 
@@ -12,16 +14,17 @@
 
 -define(SHOW_VERBOSE, ?SHOW_ENABLED and true).
 
--define(VSHOW(Str, Args, Data), case ?SHOW_VERBOSE of true -> printout(Data, ?SHOW_MONITORED++"(verbose) ~p, "++Str, [?FUNCTION_NAME]++Args); _ -> ok end).
+-define(VSHOW(Str, Args, Data), case ?SHOW_VERBOSE of true -> printout(Data, ?SHOW_MONITORED++"(verbose, ln.~p) ~p, "++Str, [?LINE,?FUNCTION_NAME]++Args); _ -> ok end).
 
 -define(DO_SHOW(Str, Args, Data), printout(Data, ?SHOW_MONITORED++"(verbose) ~p, "++Str, [?FUNCTION_NAME]++Args)).
 
 -define(MONITOR_SPEC,
         #{init => state1_std,
           map =>
-              #{state1_std => #{recv => #{data => state2_send_after}}, state2_send_after => #{send => #{error => error_state}},
+              #{state1_std => #{recv => #{data => state2_send_after}}, 
+                state2_send_after => #{send => #{error => error_state}},
                 state6_branch => #{recv => #{data => state2_send_after, stop => stop_state}}},
-          timeouts => #{state2_send_after => {1000, state6_branch}}, errors => #{state2_send_after => unspecified_error}, resets => #{}}).
+          timeouts => #{state2_send_after => {1000, state6_branch}}, errors => #{state2_send_after => error_in_processing}, resets => #{}}).
 
 -define(PROTOCOL_SPEC, {act, r_data, {rec, "s1", {act, s_error, error, aft, 1000, {branch, [{data, {rvar, "s1"}}, {stop, endP}]}}}}).
 
@@ -43,9 +46,9 @@ start_link(Args) -> stub_start_link(Args).
 %% If this process is set to be monitored (i.e., ?MONITORED) then, in the space indicated below setup options for the monitor may be specified, before the session actually commences.
 %% Processes wait for a signal from the session coordinator (SessionID) before beginning.
 init(Args) ->
-    printout("args:\n\t\t~p.", [Args]),
+    % ?SHOW("\n\targs: ~p.\n", [Args], Args),
     {ok, Data} = stub_init(Args),
-    printout("data:\n\t\t~p.", [Data]),
+    ?SHOW("\n\tdata: ~p.\n", [Data], Data),
     CoParty = maps:get(coparty_id, Data),
     SessionID = maps:get(session_id, Data),
     case ?MONITORED of
@@ -55,6 +58,7 @@ init(Args) ->
             ?VSHOW("finished setting options for monitor.", [], Data);
         _ -> ok
     end,
+    ?SHOW("waiting to received start signal from session (~p)",[SessionID],Data),
     receive
         {SessionID, start} ->
             ?SHOW("received start signal from session.", [], Data),
@@ -64,7 +68,7 @@ init(Args) ->
 %% @doc Adds default empty list for Data.
 %% @see run/2.
 run(CoParty) ->
-    Data = #{coparty_id => CoParty, timers => #{}, msgs => #{}, logs => #{}, options => #{presistent_nonblocking_payload_workers => false}},
+    Data = #{coparty_id => CoParty, timers => #{}, msgs => #{}, logs => #{}, options => #{presistent_nonblocking_payload_workers=>true}},
     ?VSHOW("using default Data.", [], Data),
     run(CoParty, Data).
 
@@ -95,71 +99,87 @@ main(CoParty, Data) ->
 
 loop_state2(CoParty, Data) ->
     AwaitPayload2 = nonblocking_payload(fun get_payload2/1, {error, Data}, self(), 1000, Data),
-    ?VSHOW("waiting for (error) payload to be returned from (~p).", [AwaitPayload2], Data),
+    % ?VSHOW("waiting for payload to be returned from (~p).", [AwaitPayload2], Data),
+    ?SHOW("\n\tstarted new processor (~p) for latest data.\n\twaiting for news of error from processors.\n", [AwaitPayload2], Data),
     receive
-        {_AwaitPayload2, ok, {error = Label2, Payload2}} ->
-            ?VSHOW("(error) payload obtained:\n\t\t{~p, ~p}.", [Label2, Payload2], Data),
-            CoParty ! {self(), error, Payload2},
-            Data1 = save_msg(send, error, Payload2, Data),
-            error(unspecified_error),
-            stopping(unspecified_error, CoParty, Data1);
-        {AwaitPayload2, ko} ->
-            ?VSHOW("unsuccessful payload. (probably took too long)", [], Data),
-            ?SHOW("waiting to recv.", [], Data),
-            receive
-                {CoParty, data = Label6, Payload6} ->
-                    Data1 = save_msg(recv, data, Payload6, Data),
-                    ?SHOW("recv ~p: ~p.", [Label6, Payload6], Data1),
-                    loop_state2(CoParty, Data1);
-                {CoParty, stop = Label6, Payload6} ->
-                    Data1 = save_msg(recv, stop, Payload6, Data),
-                    ?SHOW("recv ~p: ~p.", [Label6, Payload6], Data1),
-                    stopping(normal, CoParty, Data1)
-            end
+        {_AwaitPayload2, ok, {Label2, Payload2}} ->
+            case Label2 of
+              %% if error
+              error ->
+                ?SHOW("processor (~p) found error!\n\t\tin: ~p.",[_AwaitPayload2,Payload2], Data),
+                CoParty ! {self(), error, Payload2},
+                Data1 = save_msg(send, error, Payload2, Data),
+                % error(unspecified_error),
+                stopping(error_in_processing, CoParty, Data1);
+              %% if not error, then ignore
+              _ -> no_error_body(CoParty,Data)
+            end;
+        {AwaitPayload2, ko} -> no_error_body(CoParty,Data)
     end.
+
+no_error_body(CoParty,Data) ->
+  ?SHOW("\n\tno error received from processors.\n\n\twaiting to recv either {data} or {stop}.\n", [], Data),
+  receive
+      {CoParty, data = Label6, Payload6} ->
+          Data1 = save_msg(recv, data, Payload6, Data),
+          ?SHOW("recv ~p: ~p.", [Label6, Payload6], Data1),
+          loop_state2(CoParty, Data1);
+      {CoParty, stop = Label6, Payload6} ->
+          Data1 = save_msg(recv, stop, Payload6, Data),
+          ?SHOW("recv ~p: ~p.", [Label6, Payload6], Data1),
+          stopping(normal, CoParty, Data1)
+  end.
 
 %%% @doc Adds default reason 'normal' for stopping.
 %%% @see stopping/3.
 stopping(CoParty, Data) ->
-    ?VSHOW("\n\t\tData:\t~p.\n", [Data], Data),
+    ?VSHOW("\n\t\tData:\t~p.", [Data], Data),
     stopping(normal, CoParty, Data).
 
-%%% @doc Writes logs to file before stopping if configured to do so.
-%%% (enabled by default)
+%%% @doc Adds default reason 'normal' for stopping.
 %%% @param Reason is either atom like 'normal' or tuple like {error, more_details_or_data}.
-stopping(Reason, CoParty,
-         #{role := #{name := Name, module := Module},
-           options := #{default_log_output_path := Path, output_logs_to_file := true, logs_written_to_file := false} = Options} =
-             Data) ->
-    {{Year, Month, Day}, {Hour, Min, Sec}} = calendar:now_to_datetime(erlang:timestamp()),
-    LogFilePath = io_lib:fwrite("~p/dump_~p_~p_~p_~p_~p_~p_~p_~p.log", [Path, Module, Name, Year, Month, Day, Hour, Min, Sec]),
-    ?SHOW("writing logs to \"~p\".", [LogFilePath], Data),
-    file:write_file(LogFilePath, io_lib:fwrite("~p.\n", [Data])),
-    stopping(Reason, CoParty, maps:put(options, maps:put(logs_written_to_file, true, Options), Data));
-%%% @doc Catches 'normal' reason for stopping.
-%%% @param Reason is either atom like 'normal' or tuple like {error, more_details_or_data}.
-stopping(normal = Reason, _CoParty, #{role := #{name := Name, module := Module}, session_id := SessionID} = Data) ->
+stopping(normal = Reason, _CoParty, #{role:=#{name:=Name,module:=Module},session_id:=SessionID}=Data) ->
     ?SHOW("stopping normally.", [], Data),
-    SessionID ! {{Name, Module, self()}, stopping, Reason, Data},
+    SessionID ! {{Name,Module,self()}, stopping, Reason, Data},
     exit(normal);
 %%% @doc stopping with error.
 %%% @param Reason is either atom like 'normal' or tuple like {error, Reason, Details}.
 %%% @param CoParty is the process ID of the other party in this binary session.
 %%% @param Data is a list to store data inside to be used throughout the program.
-stopping({error, Reason, Details} = Info, _CoParty, #{role := #{name := Name, module := Module}, session_id := SessionID} = Data) when is_atom(Reason) ->
-    ?SHOW("error, stopping...\n\t\tReason:\t~p,\n\t\tDetails:\t~p,\n\t\tCoParty:\t~p,\n\t\tData:\t~p.\n",
+stopping({error, Reason, Details}=Info, _CoParty, #{role:=#{name:=Name,module:=Module},session_id:=SessionID}=Data) when is_atom(Reason) ->
+    ?SHOW("error, stopping...\n\t\tReason:\t~p,\n\t\tDetails:\t~p,\n\t\tCoParty:\t~p,\n\t\tData:\t~p.",
                               [Reason, Details, _CoParty, Data],
                               Data),
-    SessionID ! {{Name, Module, self()}, stopping, Reason, Data},
+    SessionID ! {{Name,Module,self()}, stopping, Info, Data},
     erlang:error(Reason, Details);
 %%% @doc Adds default Details to error.
 stopping({error, Reason}, CoParty, Data) when is_atom(Reason) ->
-    ?VSHOW("error, stopping...\n\t\tReason:\t~p,\n\t\tCoParty:\t~p,\n\t\tData:\t~p.\n", [Reason, CoParty, Data], Data),
+    ?VSHOW("error, stopping...\n\t\tReason:\t~p,\n\t\tCoParty:\t~p,\n\t\tData:\t~p.", [Reason, CoParty, Data], Data),
     stopping({error, Reason, []}, CoParty, Data);
 %%% @doc stopping with Unexpected Reason.
-stopping(Reason, _CoParty, #{role := #{name := Name, module := Module}, session_id := SessionID} = Data) when is_atom(Reason) ->
-    ?SHOW("unexpected stop...\n\t\tReason:\t~p,\n\t\tCoParty:\t~p,\n\t\tData:\t~p.\n", [Reason, _CoParty, Data], Data),
-    SessionID ! {{Name, Module, self()}, stopping, Reason, Data},
+stopping(Reason, _CoParty, #{role:=#{name:=Name,module:=Module},session_id:=SessionID}=Data) when is_atom(Reason) ->
+    ?SHOW("stopping...\n\t\tReason:\t~p,\n\t\tCoParty:\t~p,\n\t\tData:\t~p.", [Reason, _CoParty, Data], Data),
+    SessionID ! {{Name,Module,self()}, stopping, Reason, Data},
     exit(Reason).
 
-get_payload2({_Args, _Data}) -> extend_with_functionality_for_obtaining_payload.
+%% @doc finds an error with ?DATA_ERROR_NUM.
+get_payload2({Args, Data}) -> 
+  % extend_with_functionality_for_obtaining_payload.
+  
+  ?assert(Args=:=error),
+
+  %% get most recent data
+  Recent = get_msg(recv, data, Data),
+
+  %% show how they can take progressivly longer to process
+  timer:sleep(Recent * 1000),
+
+  case lists:member(Recent,?ERROR_DATA) of 
+
+    %% if the error 
+    true -> {error,list_to_atom("error_in_data_"++integer_to_list(Recent))};
+
+    %% no error
+    _ -> {no_error,nothing}
+  
+  end.

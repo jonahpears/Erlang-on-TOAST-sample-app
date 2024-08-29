@@ -2,9 +2,9 @@
 
 -file("server_side_ext", 1).
 
--define(ERROR_DATA, [4]).
+-define(ERROR_DATA, []).
 
--define(MONITORED, true).
+-define(MONITORED, false).
 
 -define(SHOW_MONITORED, case ?MONITORED of true -> "(m) "; _ -> "" end).
 
@@ -68,7 +68,7 @@ init(Args) ->
 %% @doc Adds default empty list for Data.
 %% @see run/2.
 run(CoParty) ->
-    Data = #{coparty_id => CoParty, timers => #{}, msgs => #{}, logs => #{}, options => #{presistent_nonblocking_payload_workers=>true}},
+    Data = default_stub_data(),
     ?VSHOW("using default Data.", [], Data),
     run(CoParty, Data).
 
@@ -180,6 +180,6 @@ get_payload2({Args, Data}) ->
     true -> {error,list_to_atom("error_in_data_"++integer_to_list(Recent))};
 
     %% no error
-    _ -> {no_error,nothing}
+    _ -> {no_error,list_to_atom("nothing_in_data_"++integer_to_list(Recent))}
   
   end.

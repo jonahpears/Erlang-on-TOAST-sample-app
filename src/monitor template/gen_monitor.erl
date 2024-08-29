@@ -596,17 +596,28 @@ handle_event(info, {SusID, Label, _Payload}=Msg, State, #{coparty_id:=_CoPartyID
 
         %% if within grace, postpone
         true ->
-          ?SHOW("\n\ttried to send (~p) early, postponed (grace period).\n",[Msg],Data),
+          ?SHOW("\n\ttried to send (~p) at wrong time, postponed (grace period).\n",[Msg],Data),
           NewCount = case ImmunityState of true -> Count; _-> Count+1 end,
           Data1 = maps:put(options,maps:put(grace_period,maps:put(send,maps:put(count,NewCount,SendGrace), GracePeriod),Options),Data),
           {keep_state, Data1, [postpone]};
 
         %% expended grace
         _ ->
-          ?SHOW("\n\tprotocol violation:\n\ttried to send (~p) too early,\n\t(not configured to enforce protocol,\n\t and grace period (~p/~p) expended).\n",[Msg,MaxNum,Count],Data),
-          StopData = stop_data([{reason, protocol_violation_send_wrong_time_expended_grace_period}, {data, Data}]),
-          ?VSHOW("\n\tafter violation, stopping,\n\n\tStopData: ~p.\n",[StopData],Data),
-          {next_state, stop_state, StopData}
+          case SelectedPreset of 
+
+            %% if enforcement, then postpone
+            enforcement -> 
+              ?SHOW("\n\ttried to send (~p) at wrong time, postponed (enforcement).\n",[Msg],Data),
+              {keep_state_and_data, [postpone]};
+
+            %% protocol violation
+            _ ->
+              ?SHOW("\n\tprotocol violation:\n\ttried to send (~p) at wrong time,\n\t(not configured to enforce protocol,\n\t and grace period (~p/~p) expended).\n",[Msg,MaxNum,Count],Data),
+              StopData = stop_data([{reason, protocol_violation_send_wrong_time_expended_grace_period}, {data, Data}]),
+              ?VSHOW("\n\tafter violation, stopping,\n\n\tStopData: ~p.\n",[StopData],Data),
+              {next_state, stop_state, StopData}
+
+          end
 
       end;
 
@@ -990,17 +1001,28 @@ when _CoPartyID=:=CoPartyID ->
 
         %% if within grace, postpone
         true ->
-          ?SHOW("\n\treceived (~p) early, postponed (grace period).",[Msg],Data),
+          ?SHOW("\n\treceived (~p) at wrong time, postponed (grace period).",[Msg],Data),
           NewCount = case ImmunityState of true -> Count; _-> Count+1 end,
           Data1 = maps:put(options,maps:put(grace_period,maps:put(recv,maps:put(count,NewCount,RecvGrace), GracePeriod),Options),Data),
           {keep_state, Data1, [postpone]};
 
         %% expended grace
         _ ->
-          ?SHOW("\n\tprotocol violation:\n\treceived (~p) too early,\n\t(not configured to enforce protocol,\n\t and grace period (~p/~p) expended).\n",[Msg,MaxNum,Count],Data),
-          StopData = stop_data([{reason, protocol_violation_reception_expended_grace_period}, {data, Data}]),
-          ?VSHOW("\n\tafter violation, stopping,\n\n\tStopData: ~p.\n",[StopData],Data),
-          {next_state, stop_state, StopData}
+          case SelectedPreset of 
+
+            %% if enforcement, then postpone
+            enforcement -> 
+              ?SHOW("\n\treceived (~p) at wrong time, postponed (enforcement).\n",[Msg],Data),
+              {keep_state_and_data, [postpone]};
+
+            %% protocol violation
+            _ ->
+              ?SHOW("\n\tprotocol violation:\n\treceived (~p) at wrong time,\n\t(not configured to enforce protocol,\n\t and grace period (~p/~p) expended).\n",[Msg,MaxNum,Count],Data),
+              StopData = stop_data([{reason, protocol_violation_recv_wrong_time_expended_grace_period}, {data, Data}]),
+              ?VSHOW("\n\tafter violation, stopping,\n\n\tStopData: ~p.\n",[StopData],Data),
+              {next_state, stop_state, StopData}
+
+          end
 
       end;
 
@@ -1010,13 +1032,13 @@ when _CoPartyID=:=CoPartyID ->
     
         %% if enforcement, then postpone
         enforcement -> 
-          ?SHOW("\n\t\t\treceived (~p) early, postponed (enforcement).",[Msg],Data),
+          ?SHOW("\n\t\t\treceived (~p) at wrong time, postponed (enforcement).",[Msg],Data),
           {keep_state_and_data, [postpone]};
 
         %% protocol violation
         _ ->
-          ?SHOW("\n\tprotocol violation:\n\treceived (~p) too early,\n\t(not configured to enforce protocol).\n",[Msg],Data),
-          StopData = stop_data([{reason, protocol_violation_too_early_reception}, {data, Data}]),
+          ?SHOW("\n\tprotocol violation:\n\treceived (~p) at wrong time,\n\t(not configured to enforce protocol).\n",[Msg],Data),
+          StopData = stop_data([{reason, protocol_violation_recv_wrong_time}, {data, Data}]),
           ?VSHOW("\n\tafter violation, stopping,\n\n\tStopData: ~p.\n",[StopData],Data),
           {next_state, stop_state, StopData}
 
@@ -1133,11 +1155,14 @@ process_setup_params(#{sus_id:=SusID,options:=Options}=Data) ->
       {ok, Data};
 
     %% continue to process more options
-    {SusID, setup_options, {OptionKey, Map}} ->
+    {SusID, setup_options, {OptionKey, NewValue}} ->
       ?SHOW("\n\tSetting options for (~p).",[OptionKey],Data),
       %% merge with current option
       CurrentOption = maps:get(OptionKey, Options),
-      NewOption = nested_map_merger(CurrentOption, Map),
+      NewOption = case is_map(CurrentOption) of 
+        true -> nested_map_merger(CurrentOption, NewValue);
+        _ -> NewValue
+      end,
       % ?SHOW("new option: ~p.",[NewOption],Data),
       %% update options with merged option
       Options1 = maps:put(OptionKey, NewOption, Options),

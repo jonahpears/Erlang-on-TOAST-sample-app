@@ -7,7 +7,7 @@
       % {role, #{module=>client_side,name=>client_side}} 
       {role, #{module=>server_side_ext,name=>server_side}},
       {role, #{module=>client_side_ext,name=>client_side}} 
-      % {role, #{module=>untimed_server,name=>untimed_server}},
+      % {role, #{module=>timed_server,name=>timed_server}},
       % {role, #{module=>untimed_client,name=>untimed_client}} 
     ]}},
   {applications,

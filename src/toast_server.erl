@@ -247,6 +247,16 @@ handle_info(timeout, #{state:=start_state=StateName,roles:=Roles,params:=Params}
   {noreply, State2};
 %%
 
+handle_info({{_Name,_Module,_PID}=Role,stopping,normal,StubData}, #{state:=running_state=StateName,params:=Params}=State) ->
+  ?SHOW("~p,\n\t~p stopping normally,\n\n\tData: ~p.\n",[StateName,Role,StubData],Params),
+  {noreply, State};
+%%
+
+handle_info({{_Name,_Module,_PID}=Role,stopping,Reason,StubData}, #{state:=running_state=StateName,params:=Params}=State) ->
+  ?SHOW("~p,\n\t~p stopping abnormally,\n\n\tReason: ~p,\n\n\tData: ~p.\n",[StateName,Role,Reason,StubData],Params),
+  {noreply, State};
+%%
+
 handle_info(Msg, #{state:=running_state=StateName,params:=Params}=State) ->
   ?SHOW("~p,\n\tUnhandled msg: ~p.\n",[StateName,Msg],Params),
   {noreply, State}.

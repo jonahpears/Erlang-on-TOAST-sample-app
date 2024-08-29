@@ -51,6 +51,7 @@ init(Args) ->
     case ?MONITORED of
         true ->
             CoParty ! {self(), setup_options, {printout, #{enabled => true, verbose => true, termination => true}}},
+            CoParty ! {self(), setup_options, {selected_preset, enforcement}},
             CoParty ! {self(), ready, finished_setup},
             ?VSHOW("finished setting options for monitor.", [], Data);
         _ -> ok
@@ -64,7 +65,7 @@ init(Args) ->
 %% @doc Adds default empty list for Data.
 %% @see run/2.
 run(CoParty) ->
-    Data = #{coparty_id => CoParty, timers => #{}, msgs => #{}, logs => #{}, options => #{presistent_nonblocking_payload_workers => false}},
+    Data = default_stub_data(),
     ?VSHOW("using default Data.", [], Data),
     run(CoParty, Data).
 
@@ -85,37 +86,19 @@ run(CoParty, Data) ->
 %%% Any loops are implemented recursively, and have been moved to their own function scope.
 %%% @see stub.hrl for further details and the functions themselves.
 main(CoParty, Data) ->
-    Payload1 = get_payload1({data, Data}),
-    CoParty ! {self(), data, Payload1},
-    Data1 = save_msg(send, data, Payload1, Data),
-    ?SHOW("sent data.", [], Data1),
-    loop_state2(CoParty, Data1).
+    CoParty ! {self(), data, 1},
+    CoParty ! {self(), data, 2},
+    CoParty ! {self(), data, 3},
+    CoParty ! {self(), data, 4},
+    CoParty ! {self(), data, 5},
+    CoParty ! {self(), data, 6},
+    CoParty ! {self(), data, 7},
+    CoParty ! {self(), data, 8},
+    CoParty ! {self(), data, 9},
+    CoParty ! {self(), stop, none},
+    stopping(CoParty,Data).
 
-loop_state2(CoParty, Data) ->
-    ?SHOW("waiting to recv.", [], Data),
-    receive
-        {CoParty, error = Label2, Payload2} ->
-            Data1 = save_msg(recv, error, Payload2, Data),
-            ?SHOW("recv ~p: ~p.", [Label2, Payload2], Data1),
-            stopping(normal, CoParty, Data1)
-        after 1000 ->
-                  AwaitPayload5 = nonblocking_payload(fun get_payload5/1, {data, Data}, self(), 0, Data),
-                  ?VSHOW("waiting for (data) payload to be returned from (~p).", [AwaitPayload5], Data),
-                  receive
-                      {_AwaitPayload5, ok, {data = Label5, Payload5}} ->
-                          ?VSHOW("(data) payload obtained:\n\t\t{~p, ~p}.", [Label5, Payload5], Data),
-                          CoParty ! {self(), data, Payload5},
-                          Data1 = save_msg(send, data, Payload5, Data),
-                          loop_state2(CoParty, Data1);
-                      {AwaitPayload5, ko} ->
-                          ?VSHOW("unsuccessful payload. (probably took too long)", [], Data),
-                          Payload7 = get_payload7({stop, Data}),
-                          CoParty ! {self(), stop, Payload7},
-                          Data1 = save_msg(send, stop, Payload7, Data),
-                          ?SHOW("sent stop.", [], Data1),
-                          stopping(normal, CoParty, Data1)
-                  end
-    end.
+
 
 %%% @doc Adds default reason 'normal' for stopping.
 %%% @see stopping/3.
@@ -160,9 +143,3 @@ stopping(Reason, _CoParty, #{role := #{name := Name, module := Module}, session_
     ?SHOW("unexpected stop...\n\t\tReason:\t~p,\n\t\tCoParty:\t~p,\n\t\tData:\t~p.\n", [Reason, _CoParty, Data], Data),
     SessionID ! {{Name, Module, self()}, stopping, Reason, Data},
     exit(Reason).
-
-get_payload7({_Args, _Data}) -> extend_with_functionality_for_obtaining_payload.
-
-get_payload5({_Args, _Data}) -> extend_with_functionality_for_obtaining_payload.
-
-get_payload1({_Args, _Data}) -> extend_with_functionality_for_obtaining_payload.
