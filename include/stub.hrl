@@ -34,6 +34,29 @@
 -endif.
 
 %% @doc 
+-ifdef(SHOW_ENABLED).
+-else.
+-define(SHOW_ENABLED, true).
+-endif.
+ 
+-ifdef(SHOW).
+-else.
+-define(SHOW(Str, Args, Data), case ?SHOW_ENABLED of true -> printout(Data, ?SHOW_MONITORED++"~p, "++Str, [?FUNCTION_NAME]++Args); _ -> ok end).
+-endif.
+
+-ifdef(SHOW_VERBOSE).
+-else.
+-define(SHOW_VERBOSE, ?SHOW_ENABLED and true).
+-endif.
+
+-ifdef(VSHOW).
+-else.
+-define(VSHOW(Str, Args, Data), case ?SHOW_VERBOSE of true -> printout(Data, ?SHOW_MONITORED++"(verbose, ln.~p) ~p, "++Str, [?LINE,?FUNCTION_NAME]++Args); _ -> ok end).
+-endif.
+
+
+
+%% @doc 
 stub_start_link() -> stub_start_link([]).
 
 
@@ -100,7 +123,7 @@ stub_init(Args) ->
   % ?assert(is_map_key(init_sus_id,Params)),
 
   %% unpack from param map
-  #{role:=#{module:=Module,name:=Name}=Role,session_name:=SessionName,init_sus_id:=InitID} = Params,
+  #{role:=#{module:=Module,name:=Name}=Role,session_name:=_SessionName,init_sus_id:=InitID} = Params,
 
   %% make data
   Data = maps:put(role,Role,default_stub_data()),

@@ -98,8 +98,7 @@ main(CoParty, Data) ->
     end.
 
 loop_state2(CoParty, Data) ->
-    AwaitPayload2 = nonblocking_payload(fun get_payload2/1, {error, Data}, self(), 1000, Data),
-    % ?VSHOW("waiting for payload to be returned from (~p).", [AwaitPayload2], Data),
+    AwaitPayload2 = nonblocking_payload(fun get_payload2/1, {error, Data}, self(), 1500, Data),
     ?SHOW("\n\tstarted new processor (~p) for latest data.\n\twaiting for news of error from processors.\n", [AwaitPayload2], Data),
     receive
         {_AwaitPayload2, ok, {Label2, Payload2}} ->
@@ -118,6 +117,9 @@ loop_state2(CoParty, Data) ->
 
 no_error_body(CoParty,Data) ->
   ?SHOW("\n\tno error received from processors.\n\n\twaiting to recv either {data} or {stop}.\n", [], Data),
+  CoParty ! {self(), error, multiple_error_1},
+  CoParty ! {self(), error, multiple_error_2},
+  CoParty ! {self(), error, multiple_error_3},
   receive
       {CoParty, data = Label6, Payload6} ->
           Data1 = save_msg(recv, data, Payload6, Data),
@@ -174,11 +176,38 @@ get_payload2({Args, Data}) ->
   timer:sleep(Recent * 1000),
 
   case lists:member(Recent,?ERROR_DATA) of 
-
     %% if the error 
-    true -> {error,list_to_atom("error_in_data_"++integer_to_list(Recent))};
-
+    true -> 
+      {error,list_to_atom("error_in_data_"++integer_to_list(Recent))};
     %% no error
-    _ -> {no_error,list_to_atom("nothing_in_data_"++integer_to_list(Recent))}
-  
+    _ -> 
+      {no_error,list_to_atom("nothing_in_data_"++integer_to_list(Recent))}
   end.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -16,13 +16,15 @@
     _ -> ok
   end ).
 
+-define(VERBOSE_LINE_NUM, false).
+
 -define(VSHOW(Str,Args,Data),
   #{options:=#{printout:=#{enabled:=Enabled,verbose:=Verbose}}} = Data,
   case (Enabled and Verbose) of 
     true -> 
       case is_map_key(state,Data) of 
-        true -> printout(Data, "<M> (verbose, ln.~p) ~p, "++Str,[?LINE, maps:get(state,Data)]++Args);
-        _ -> printout(Data, "<M> (verbose, ln.~p) ~p, "++Str,[?LINE, ?FUNCTION_NAME]++Args)
+        true -> printout(Data, "<M> "++case ?VERBOSE_LINE_NUM of true -> io:format("(verbose, ln.~p)",[?LINE]); _ -> "" end++" ~p, "++Str,[maps:get(state,Data)]++Args);
+        _ -> printout(Data, "<M> "++case ?VERBOSE_LINE_NUM of true -> io:format("(verbose, ln.~p)",[?LINE]); _ -> "" end++" ~p, "++Str,[?FUNCTION_NAME]++Args)
       end;
     _ -> ok
   end ).

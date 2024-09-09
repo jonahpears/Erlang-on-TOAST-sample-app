@@ -4,9 +4,9 @@
 
 -define(DATA_NUM, 10).
 
--define(MAX_DATA_PERIOD, 1000).
-
 -define(MONITORED, true).
+
+-define(MAX_DATA_PERIOD, 1000).
 
 -define(SHOW_MONITORED, case ?MONITORED of true -> "(m) "; _ -> "" end).
 
