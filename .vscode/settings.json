@@ -1,0 +1,8 @@
+{
+  // Run `elp` from PATH. The extension otherwise launches the server it
+  // bundles, but the universal marketplace build bundles a macOS (Mach-O)
+  // binary, which cannot execute here. .envrc already puts this devShell's
+  // erlang-language-platform on PATH once the shell is entered (via
+  // mkhl.direnv, which injects it into the extension host's own process).
+  "elp.serverPath": "elp"
+}
