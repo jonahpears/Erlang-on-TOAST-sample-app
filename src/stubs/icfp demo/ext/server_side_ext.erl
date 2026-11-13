@@ -1,6 +1,5 @@
 -module(server_side_ext).
 
--file("server_side_ext", 1).
 
 -define(ERROR_DATA, [4]).
 

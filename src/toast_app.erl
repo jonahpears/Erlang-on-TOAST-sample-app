@@ -4,7 +4,6 @@
 %%%-------------------------------------------------------------------
 
 -module(toast_app).
--file("toast_app.erl", 1).
 -behaviour(application).
 
 -include("toast_data_records.hrl").

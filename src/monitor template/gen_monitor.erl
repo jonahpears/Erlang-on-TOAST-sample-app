@@ -1,5 +1,4 @@
 -module(gen_monitor).
--file("gen_monitor.erl", 1).
 
 -behaviour(gen_statem).
 

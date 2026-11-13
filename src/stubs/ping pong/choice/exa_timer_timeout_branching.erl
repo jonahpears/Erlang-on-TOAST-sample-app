@@ -1,6 +1,5 @@
 -module(exa_timer_timeout_branching).
 
--file("exa_timer_timeout_branching.erl", 1).
 
 %% @doc both the below used to determine whether a kind of log should be allowed to output to the terminal.
 -define(SHOW_ENABLED, true).

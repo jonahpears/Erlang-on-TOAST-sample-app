@@ -1,6 +1,5 @@
 -module(timed_server).
 
--file("timer_server", 1).
 
 -define(ERROR_DATA, [4]).
 
