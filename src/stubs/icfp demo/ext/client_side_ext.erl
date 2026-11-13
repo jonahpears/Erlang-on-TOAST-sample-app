@@ -1,6 +1,5 @@
 -module(client_side_ext).
 
--file("client_side_ext", 1).
 
 -define(DATA_NUM, 10).
 

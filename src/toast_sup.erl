@@ -4,7 +4,6 @@
 %%%-------------------------------------------------------------------
 
 -module(toast_sup).
--file("toast_sup.erl", 1).
 -behaviour(supervisor).
 
 -include("toast_data_records.hrl").

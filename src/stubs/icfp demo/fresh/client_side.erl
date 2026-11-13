@@ -1,6 +1,5 @@
 -module(client_side).
 
--file("client_side", 1).
 
 -define(MONITORED, false).
 

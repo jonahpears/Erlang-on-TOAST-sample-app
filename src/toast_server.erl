@@ -1,5 +1,4 @@
 -module(toast_server).
--file("toast_server.erl", 1).
 -behaviour(gen_server).
 
 -include_lib("stdlib/include/assert.hrl").

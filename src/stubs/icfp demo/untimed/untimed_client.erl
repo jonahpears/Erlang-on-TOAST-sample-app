@@ -1,6 +1,5 @@
 -module(untimed_client).
 
--file("untimed_client", 1).
 
 -define(MONITORED, true).
 

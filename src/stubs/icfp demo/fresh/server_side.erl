@@ -1,6 +1,5 @@
 -module(server_side).
 
--file("server_side", 1).
 
 -define(MONITORED, false).
 
